@@ -317,12 +317,35 @@ units. The App may show `1` million calls as a conservative planning envelope, b
 that reserve is advisory and is excluded from deterministic totals. The App never
 overwrites measured or billable demand simply to make the presentation integer.
 
+The shared technical-demand boundary is the only place where volumetry output is
+converted into a commercial meter. Functions `total_execution_units_gb_s`, for
+example, is divided by `10,000` before the `functions_execution_10k_gb_s` adapter
+applies environment demand share. Scenario assistance and BOM persistence call the
+same resolver; a second UI-only or BOM-only resolver is not permitted.
+
+For `explicit_units`, measured demand is evidence rather than an implicit override.
+The approved environment/product/month matrix is the quantity priced in each period.
+When its peak is above or below the measured baseline, the BOM records a comparison
+warning and preserves both values in provenance; it never replaces the approved
+schedule silently. Metrics that cannot be derived technically remain blocked until
+an explicit plan resolves their governed input requirement.
+
+Currency rounding occurs at the persisted monthly-period boundary. Line annual and
+contract amounts are the sums of those rounded periods, exactly like snapshot totals,
+UI series, and exports. The unrounded aggregate-engine result is retained separately
+in line inputs for audit but is never presented as the persisted contract total.
+
 For Data Integration, processed GB can be estimated from integration demand, but
 workspace running hours and Pipeline Operator execution hours cannot. New plans use
 zero until the architect supplies a value. Workspace shortcuts provide `160` business
 hours, `360` extended hours, and `744` always-on hours; choosing `744` produces an
 explicit confirmation warning. Historical scenarios remain immutable and are not
 silently rewritten.
+
+A BOM remains technically current when it references the latest snapshot ID or when
+the referenced and latest snapshots have the same assumption-set version,
+consolidated demand, and row results. Request metadata and regenerated IDs do not
+create a false stale state; any semantic demand change does.
 
 The editor exposes these policies through a product/metric/SKU search, one collapsed
 row per product, progressively disclosed metric editors, and a product-grouped monthly

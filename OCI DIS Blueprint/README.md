@@ -256,6 +256,14 @@ price snapshots, imports authorized contractual CSV rate cards, and governs
 Service Product-to-SKU mappings. Every BOM line preserves formula, demand,
 environment, mapping, price-item, and snapshot provenance.
 
+The demand boundary normalizes technical units exactly once before applying OCI
+commercial rules; for example, Functions GB-seconds are converted to the governed
+10K GB-s meter. In `explicit_units` scenarios, the approved environment/product/month
+schedule is authoritative for pricing while measured technical demand remains visible
+as comparison evidence. Persisted line, annual, and contract totals are reconstructed
+from the same rounded monthly periods used by UI and exports, so no unexplained
+line-to-total rounding difference is accepted.
+
 Deployment scenarios also own a normalized monthly activation calendar. Each
 environment can start in a different contract month, ramp linearly or in steps,
 and override the default schedule for a specific OCI service. BOM snapshots

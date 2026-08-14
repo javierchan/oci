@@ -6,6 +6,7 @@ from collections import defaultdict
 from dataclasses import replace
 from decimal import Decimal, InvalidOperation
 import json
+from typing import Mapping
 
 from fastapi import HTTPException
 from sqlalchemy import select
@@ -58,6 +59,58 @@ TOOL_LABEL_TO_SERVICE_ID = {
     "OCI DATA CATALOG": "DATA_CATALOG",
     "OCI IAM AND SECURITY": "IAM",
 }
+
+
+def build_technical_baseline(technical: Mapping[str, object]) -> dict[str, object]:
+    """Normalize volumetry outputs into the commercial meters consumed by demand adapters.
+
+    Volumetry deliberately reports Functions execution in raw GB-seconds, while the
+    OCI commercial meter is expressed in units of 10,000 GB-seconds. Keeping this
+    conversion at the shared demand boundary prevents API previews and persisted BOMs
+    from interpreting the same snapshot differently.
+    """
+
+    def section(name: str) -> dict[str, object]:
+        value = technical.get(name)
+        return {str(key): item for key, item in value.items()} if isinstance(value, dict) else {}
+
+    oic = section("oic")
+    data_integration = section("data_integration")
+    functions = section("functions")
+    streaming = section("streaming")
+    raw_function_execution = functions.get("total_execution_units_gb_s")
+    if raw_function_execution is None:
+        function_execution_10k = _decimal_config_value(
+            technical.get("functions_execution_10k_gb_s"),
+            "0",
+        )
+    else:
+        function_execution_10k = (
+            _decimal_config_value(raw_function_execution, "0") / Decimal("10000")
+        )
+    function_invocations = _decimal_config_value(
+        functions.get(
+            "total_invocations_month",
+            technical.get("functions_invocation_millions", 0),
+        ),
+        "0",
+    )
+    if "total_invocations_month" in functions:
+        function_invocations /= Decimal("1000000")
+
+    return {
+        **oic,
+        **data_integration,
+        **functions,
+        **streaming,
+        "oic_peak_packs_hour": oic.get("peak_packs_hour", 0),
+        "di_data_processed_gb": data_integration.get(
+            "data_processed_gb_month",
+            technical.get("di_data_processed_gb_month", 0),
+        ),
+        "functions_execution_10k_gb_s": function_execution_10k,
+        "functions_invocation_millions": function_invocations,
+    }
 
 
 def _decimal_config_value(value: object, default: str) -> Decimal:
@@ -265,7 +318,7 @@ def resolve_mapping_demand(
 ) -> ServiceDemandResult:
     """Resolve one approved mapping through the shared pure demand engine."""
 
-    policy = {**mapping.metering_policy}
+    policy = {**(mapping.metering_policy or {})}
     if mapping.source_url:
         policy["source_url"] = mapping.source_url
     return resolve_service_demand(

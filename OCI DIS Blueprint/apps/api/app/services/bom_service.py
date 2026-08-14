@@ -6,6 +6,7 @@ from collections import defaultdict
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime
 from decimal import Decimal
+import hashlib
 import json
 import math
 from typing import AbstractSet, Iterable, cast
@@ -89,6 +90,7 @@ from app.schemas.pricing import (
 from app.schemas.ai_review import AiReviewActionCandidate, AiReviewActionWorkspace
 from app.services import audit_service, concurrency, pricing_governance_service
 from app.services.technical_demand_service import (
+    build_technical_baseline,
     build_flow_evidence as _flow_evidence,
     integration_tools_with_overrides as _integration_tools_with_overrides,
     mapping_predicates_match as _mapping_predicates_match,
@@ -96,9 +98,7 @@ from app.services.technical_demand_service import (
 )
 
 
-BOM_ENGINE_VERSION = "pricing-engine-4.0.0"
-DEFAULT_MONTH_DAYS = 31.0
-DEFAULT_QUEUE_BILLING_UNIT_KB = 64.0
+BOM_ENGINE_VERSION = "pricing-engine-4.1.0"
 
 @dataclass(frozen=True)
 class BomCalculation:
@@ -1361,6 +1361,41 @@ def _required_questions(service_ids: Iterable[str]) -> list[str]:
     return questions
 
 
+def _technical_snapshot_semantic_fingerprint(snapshot: VolumetrySnapshot) -> str:
+    """Identify equivalent deterministic demand even when recalculation creates a new ID."""
+
+    payload = {
+        "assumption_set_version": snapshot.assumption_set_version,
+        "consolidated": snapshot.consolidated or {},
+        "row_results": snapshot.row_results or {},
+    }
+    canonical = json.dumps(
+        payload,
+        sort_keys=True,
+        separators=(",", ":"),
+        default=str,
+    ).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+async def _technical_snapshot_matches(
+    selected_snapshot_id: str,
+    current_snapshot_id: str,
+    db: AsyncSession,
+) -> bool:
+    """Return true for the same snapshot or a byte-equivalent technical recalculation."""
+
+    if selected_snapshot_id == current_snapshot_id:
+        return True
+    selected_snapshot = await db.get(VolumetrySnapshot, selected_snapshot_id)
+    current_snapshot = await db.get(VolumetrySnapshot, current_snapshot_id)
+    if selected_snapshot is None or current_snapshot is None:
+        return False
+    return _technical_snapshot_semantic_fingerprint(
+        selected_snapshot
+    ) == _technical_snapshot_semantic_fingerprint(current_snapshot)
+
+
 async def _current_bom_state(
     project_id: str,
     technical_snapshot_id: str,
@@ -1415,7 +1450,11 @@ async def _current_bom_state(
     unresolved_count = sum(
         1 for line in lines if line.status in UNRESOLVED_BOM_LINE_STATUSES
     )
-    technical_current = selected.technical_snapshot_id == technical_snapshot_id
+    technical_current = await _technical_snapshot_matches(
+        selected.technical_snapshot_id,
+        technical_snapshot_id,
+        db,
+    )
     ready_for_use = (
         scenario.status == "approved"
         and selected.publication_status in {"approved", "published"}
@@ -1491,6 +1530,21 @@ def _metric_options(
         "ha_multiplier": 1.0,
         "dr_role": "none",
     }
+    service_policies: dict[str, dict[str, object]] = {}
+    for candidate in sorted(
+        (item for item in mappings if item.service_id in service_ids),
+        key=lambda item: (item.service_id, item.billing_metric_key, item.id),
+    ):
+        policy = service_policies.setdefault(candidate.service_id, {})
+        for policy_key, value in (candidate.metering_policy or {}).items():
+            policy.setdefault(policy_key, value)
+    flow_evidence = _flow_evidence(
+        integrations,
+        service_config,
+        service_policies,
+        None,
+    )
+    selected_service_ids = set(service_ids)
     options: list[ScenarioMetricOptionResponse] = []
     grouped: dict[tuple[str, str], list[ServiceProductSkuMapping]] = defaultdict(list)
     for mapping in mappings:
@@ -1507,13 +1561,16 @@ def _metric_options(
         if mapping.requires_explicit_quantity:
             quantity, resolved_unit = 0.0, mapping.quantity_unit
         else:
-            quantity, resolved_unit, _ = _demand_for_metric(
-                mapping.billing_metric_key,
+            demand = _technical_demand_for_mapping(
+                mapping,
                 environment,
                 technical,
-                integrations,
-                config,
+                {**config, **mapping.predicates},
+                flow_evidence,
+                selected_service_ids,
             )
+            quantity = float(demand.quantity) if demand.quantity is not None else 0.0
+            resolved_unit = demand.unit
         source_quantity = max(quantity or 0.0, 0.0)
         baseline_quantity = float(
             normalize_quantity(
@@ -2014,39 +2071,6 @@ def _config_for(scenario: DeploymentScenario, service_id: str) -> dict[str, obje
     return dict(value) if isinstance(value, dict) else {}
 
 
-def _queue_request_millions(
-    integrations: Iterable[CatalogIntegration],
-    config: dict[str, object],
-    tool_overrides: dict[str, tuple[str, str]] | None = None,
-) -> float:
-    if "request_operations_per_message" not in config:
-        raise ValueError("Queue request operations per message require explicit flow evidence")
-    operations = max(_as_float(config.get("request_operations_per_message")), 1.0)
-    total = 0.0
-    for row in integrations:
-        if "OCI Queue" not in _integration_tools_with_overrides(row, tool_overrides):
-            continue
-        executions = _as_float(row.executions_per_day)
-        payload = _as_float(row.payload_per_execution_kb)
-        if executions <= 0 or payload <= 0:
-            continue
-        request_units = max(math.ceil(payload / DEFAULT_QUEUE_BILLING_UNIT_KB), 1)
-        total += executions * DEFAULT_MONTH_DAYS * request_units * operations
-    return total / 1_000_000.0
-
-
-def _api_call_millions(
-    integrations: Iterable[CatalogIntegration],
-    tool_overrides: dict[str, tuple[str, str]] | None = None,
-) -> float:
-    total = 0.0
-    for row in integrations:
-        if "OCI API Gateway" not in _integration_tools_with_overrides(row, tool_overrides):
-            continue
-        total += _as_float(row.executions_per_day) * DEFAULT_MONTH_DAYS
-    return total / 1_000_000.0
-
-
 def _technical_demand_for_mapping(
     mapping: ServiceProductSkuMapping,
     environment: dict[str, object],
@@ -2055,33 +2079,11 @@ def _technical_demand_for_mapping(
     flow_evidence: tuple[FlowEvidence, ...],
     selected_service_ids: set[str],
 ) -> ServiceDemandResult:
-    oic = _as_dict(technical.get("oic"))
-    data_integration = _as_dict(technical.get("data_integration"))
-    functions = _as_dict(technical.get("functions"))
-    streaming = _as_dict(technical.get("streaming"))
-    baseline = {
-        **oic,
-        **data_integration,
-        **functions,
-        **streaming,
-        "oic_peak_packs_hour": oic.get("peak_packs_hour", 0),
-        "di_data_processed_gb": data_integration.get(
-            "data_processed_gb_month",
-            technical.get("di_data_processed_gb_month", 0),
-        ),
-        "functions_execution_10k_gb_s": functions.get(
-            "total_execution_units_gb_s",
-            technical.get("functions_execution_10k_gb_s", 0),
-        ),
-        "functions_invocation_millions": (
-            Decimal(str(functions.get("total_invocations_month", 0))) / Decimal("1000000")
-        ),
-    }
     return resolve_mapping_demand(
         mapping,
         flows=flow_evidence,
         service_config=service_config,
-        technical_baseline=baseline,
+        technical_baseline=build_technical_baseline(technical),
         active_hours_month=Decimal(
             str(_as_float(environment.get("active_hours_month"), 744.0))
         ),
@@ -2168,74 +2170,25 @@ def _resolve_explicit_scenario_demand(
     )
 
 
-def _demand_for_metric(
-    metric_key: str,
-    environment: dict[str, object],
-    technical: dict[str, object],
-    integrations: list[CatalogIntegration],
-    service_config: dict[str, object],
-    tool_overrides: dict[str, tuple[str, str]] | None = None,
-) -> tuple[float | None, str, list[str]]:
-    share = _as_float(environment.get("demand_share"), 1.0)
-    ha = _as_float(environment.get("ha_multiplier"), 1.0)
-    active_hours = _as_float(environment.get("active_hours_month"), 744.0)
-    oic = _as_dict(technical.get("oic"))
-    di = _as_dict(technical.get("data_integration"))
-    functions = _as_dict(technical.get("functions"))
-    streaming = _as_dict(technical.get("streaming"))
-    warnings: list[str] = []
+def _explicit_plan_demand_warnings(
+    demand: ServiceDemandResult,
+    explicit_quantities: tuple[Decimal, ...],
+) -> list[str]:
+    """Explain differences without allowing measured demand to overwrite an approved plan."""
 
-    if metric_key == "oic_peak_packs_hour":
-        warnings.append(
-            "OIC demand uses the governed technical baseline; confirm trigger/invoke role, same-instance calls, file behavior, and Process Automation activity before approval."
-        )
-        return _as_float(oic.get("peak_packs_hour")) * share * ha, "packs", warnings
-    if metric_key == "di_workspace_hours":
-        count = _as_float(service_config.get("workspace_count"), 1.0)
-        return count * active_hours * ha, "workspace-hours", warnings
-    if metric_key == "di_data_processed_gb":
-        return _as_float(di.get("data_processed_gb_month")) * share, "GB", warnings
-    if metric_key == "di_operator_execution_hours":
-        if "operator_execution_hours_month" not in service_config:
-            return None, "execution-hours", ["Data Integration operator execution hours are required."]
-        return _as_float(service_config.get("operator_execution_hours_month")) * share, "execution-hours", warnings
-    if metric_key == "functions_execution_10k_gb_s":
-        return _as_float(functions.get("total_execution_units_gb_s")) * share / 10_000.0, "10K GB-s", warnings
-    if metric_key == "functions_invocation_millions":
-        return _as_float(functions.get("total_invocations_month")) * share / 1_000_000.0, "million invocations", warnings
-    if metric_key == "streaming_transfer_gb":
-        if "transfer_multiplier" not in service_config:
-            return None, "GB transferred", ["Streaming PUT/GET transfer requires an explicit operation multiplier."]
-        multiplier = _as_float(service_config.get("transfer_multiplier"))
-        warnings.append("Streaming transfer includes the approved PUT/GET multiplier.")
-        return _as_float(streaming.get("total_gb_month")) * share * multiplier, "GB transferred", warnings
-    if metric_key == "streaming_storage_gb_hours":
-        if "retention_days" not in service_config:
-            return None, "GB-hours", ["Streaming retention days are required to derive storage GB-hours."]
-        retention_days = max(_as_float(service_config.get("retention_days")), 0.0)
-        daily_gb = _as_float(streaming.get("total_gb_month")) / DEFAULT_MONTH_DAYS
-        warnings.append("Streaming storage is inferred from monthly flow and retention days.")
-        return daily_gb * retention_days * 24.0 * share, "GB-hours", warnings
-    if metric_key == "queue_request_millions":
-        if "request_operations_per_message" not in service_config:
-            return None, "million requests", ["Queue push/get/delete/update operations per message are required."]
-        warnings.append("Queue requests are derived from payload billing units and enqueue/dequeue operations.")
-        return (
-            _queue_request_millions(integrations, service_config, tool_overrides) * share,
-            "million requests",
-            warnings,
-        )
-    if metric_key == "goldengate_ocpu_hours":
-        if "ocpu_count" not in service_config:
-            return None, "OCPU-hours", ["GoldenGate OCPU count is required."]
-        return _as_float(service_config.get("ocpu_count")) * active_hours * ha, "OCPU-hours", warnings
-    if metric_key == "api_gateway_call_millions":
-        return _api_call_millions(integrations, tool_overrides) * share, "million API calls", warnings
-    if metric_key == "process_automation":
-        return 0.0, "included", ["Process Automation has no direct SKU line, but its activity must be included in the selected OIC message-pack demand."]
-    if metric_key == "events":
-        return 0.0, "included", warnings
-    return None, "unknown", [f"No demand resolver exists for {metric_key}."]
+    if demand.quantity is None:
+        return []
+    planned_peak = max(explicit_quantities, default=Decimal("0"))
+    measured = demand.quantity
+    if planned_peak == measured:
+        return []
+    comparison = "below" if planned_peak < measured else "above"
+    return [
+        "Approved explicit-unit peak "
+        f"({planned_peak} {demand.unit}) is {comparison} the measured technical "
+        f"baseline ({measured} {demand.unit}); deterministic pricing uses the "
+        "approved explicit schedule and preserves the baseline as provenance."
+    ]
 
 
 def _selected_price_tiers(
@@ -2453,9 +2406,10 @@ def _price_mapping_line(
     free_tier_remaining: dict[tuple[str, int], Decimal] | None = None,
     commercial_contract: GovernedSkuCommercialContract | None = None,
 ) -> tuple[dict[str, object], list[dict[str, object]]]:
-    effective_quantity = max(
-        [Decimal(str(quantity)), *(explicit_quantities or ())],
-        default=Decimal("0"),
+    effective_quantity = (
+        max(explicit_quantities, default=Decimal("0"))
+        if explicit_quantities is not None
+        else Decimal(str(quantity))
     )
     if not mapping.is_billable:
         line: dict[str, object] = {
@@ -2626,6 +2580,9 @@ def _price_mapping_line(
         else price_line_schedule(request, multipliers, free_tier_allocations=free_allocations)
     )
     final_result = schedule.periods[-1].result
+    rounded_period_amounts = tuple(period.result.totals.monthly for period in schedule.periods)
+    persisted_annual_amount = sum(rounded_period_amounts[:12], Decimal("0"))
+    persisted_contract_amount = sum(rounded_period_amounts, Decimal("0"))
     selected_item_id = final_result.selected_tier.source_item_id if final_result.selected_tier else primary_item.id
     line = {
         "environment": str(environment.get("name") or "Unspecified"),
@@ -2637,8 +2594,8 @@ def _price_mapping_line(
         "unit": unit,
         "unit_price": float(final_result.unit_price),
         "monthly_amount": float(final_result.totals.monthly),
-        "annual_amount": float(schedule.annual_totals[0]),
-        "contract_amount": float(schedule.contract_total),
+        "annual_amount": float(persisted_annual_amount),
+        "contract_amount": float(persisted_contract_amount),
         "price_item_id": selected_item_id,
         "commercial_term_id": commercial_contract.term.id if commercial_contract else None,
         "commercial_rule_family_id": commercial_contract.rule.id if commercial_contract else None,
@@ -2651,6 +2608,10 @@ def _price_mapping_line(
             "source_quantity": str(effective_quantity),
             "quoted_quantity": str(final_result.gross_quantity),
             "free_quantity": str(final_result.free_quantity_applied),
+            "aggregate_annual_amount": str(schedule.annual_totals[0]),
+            "aggregate_contract_amount": str(schedule.contract_total),
+            "persisted_annual_amount": str(persisted_annual_amount),
+            "persisted_contract_amount": str(persisted_contract_amount),
         },
         "status": "priced",
         "warnings": demand_warnings,
@@ -2887,6 +2848,33 @@ def _commercial_policy_line(
     """Represent included, dependent, or externally licensed product coverage."""
 
     aliases = [str(item) for item in policy.tool_aliases]
+    unit = "included" if status == "included" else "decision"
+    technical_demand = {
+        "metric_key": policy.publication_policy,
+        "service_id": policy.service_id,
+        "quantity": "0" if status == "included" else None,
+        "unit": unit,
+        "status": (
+            DemandStatus.RESOLVED.value
+            if status == "included"
+            else DemandStatus.EXPLICIT_INPUT_REQUIRED.value
+        ),
+        "adapter": "commercial_policy",
+        "input_payload_kb": "0",
+        "output_payload_kb": "0",
+        "messages_per_month": "0",
+        "operations_per_month": {},
+        "billing_units_per_month": "0",
+        "rule": policy.guidance,
+        "source_url": policy.source_urls[0] if policy.source_urls else None,
+        "warnings": [warning] if status == "included" else [],
+        "blockers": [] if status == "included" else [warning],
+        "details": {
+            "classification": policy.classification,
+            "publication_policy": policy.publication_policy,
+            "quantity_source": "governed_commercial_policy",
+        },
+    }
     return {
         "environment": str(environment.get("name") or "Unspecified"),
         "service_id": policy.service_id,
@@ -2894,17 +2882,24 @@ def _commercial_policy_line(
         "description": aliases[0] if aliases else policy.service_id,
         "metric_name": policy.publication_policy,
         "quantity": 0.0,
-        "unit": "included" if status == "included" else "decision",
+        "unit": unit,
         "unit_price": 0.0,
         "monthly_amount": 0.0,
         "annual_amount": 0.0,
         "contract_amount": 0.0,
         "price_item_id": None,
         "formula": policy.publication_policy,
-        "inputs": {"classification": policy.classification},
+        "inputs": {
+            "classification": policy.classification,
+            "technical_demand": technical_demand,
+        },
         "status": status,
         "warnings": [warning],
-        "provenance": {"commercial_policy_id": policy.id, "commercial_policy_version": policy.version},
+        "provenance": {
+            "commercial_policy_id": policy.id,
+            "commercial_policy_version": policy.version,
+            "technical_demand": technical_demand,
+        },
     }
 
 
@@ -3142,10 +3137,7 @@ async def calculate_bom(
                 unit = mapping.quantity_unit
             else:
                 multipliers = _ramp_multipliers(environment, mapping.service_id, scenario.contract_months)
-            if demand.status is DemandStatus.RESOLVED:
-                # Explicit plans schedule deterministic demand; they cannot replace it.
-                explicit_quantities = None
-            elif (
+            if (
                 demand.status is DemandStatus.EXPLICIT_INPUT_REQUIRED
                 and mapping.requires_explicit_quantity
                 and explicit_quantities is not None
@@ -3169,6 +3161,8 @@ async def calculate_bom(
                 )
                 quantity = float(governed_quantity)
                 warnings = [*demand.warnings]
+            if explicit_quantities is not None and demand.status is DemandStatus.RESOLVED:
+                warnings.extend(_explicit_plan_demand_warnings(demand, explicit_quantities))
             if quantity is None:
                 line = _blocked_line(mapping, environment, 0.0, unit, warnings)
                 periods = _zero_period_payloads(

@@ -83,6 +83,138 @@ def test_explicit_scenario_quantity_resolves_required_technical_demand() -> None
     assert resolved.details["quantity_source"] == "governed_scenario_quantity"
 
 
+def test_functions_technical_baseline_converts_gb_seconds_to_10k_units() -> None:
+    """The volumetry GB-s aggregate must be normalized before pricing the 10K meter."""
+
+    mapping = _scenario_mapping(
+        service_id="FUNCTIONS",
+        part_number="B90617",
+        predicates={},
+        metric_key="functions_execution_10k_gb_s",
+    )
+    mapping.quantity_unit = "10K GB-s"
+
+    demand = bom_service._technical_demand_for_mapping(
+        mapping,
+        {
+            "name": "Production",
+            "active_hours_month": 744,
+            "demand_share": 0.6,
+            "ha_multiplier": 1,
+        },
+        {
+            "functions": {
+                "total_execution_units_gb_s": 25141,
+                "total_invocations_month": 50282,
+            }
+        },
+        {},
+        (),
+        {"FUNCTIONS"},
+    )
+
+    assert demand.status is DemandStatus.RESOLVED
+    assert demand.quantity == Decimal("1.50846")
+    assert demand.unit == "10K GB-s"
+
+
+def test_bom_line_contract_totals_reconcile_to_persisted_monthly_periods() -> None:
+    """Line annual/contract amounts must equal the rounded periods exported by the App."""
+
+    mapping = _scenario_mapping(
+        service_id="ROUNDING_SERVICE",
+        part_number="ROUNDING-SKU",
+        predicates={},
+    )
+    mapping.quantity_increment = 0.01
+    scenario = DeploymentScenario(
+        project_id="project",
+        name="Rounding reconciliation",
+        status="approved",
+        currency="USD",
+        region="global",
+        price_mode="public_list",
+        commitment_model="pay_as_you_go",
+        technical_snapshot_id="technical",
+        contract_months=3,
+        start_date=date(2026, 1, 1),
+        proration_policy="full_month",
+        consumption_model="explicit_units",
+        service_config={},
+        scenario_assumptions={},
+        created_by="test",
+    )
+    price = PriceItem(
+        id="rounding-price",
+        snapshot_id="price-snapshot",
+        part_number="ROUNDING-SKU",
+        display_name="Rounding fixture",
+        metric_name="Units",
+        service_category="Integration",
+        price_type="MONTH",
+        currency="USD",
+        model="PAY_AS_YOU_GO",
+        value=0.4,
+    )
+
+    line, periods = bom_service._price_mapping_line(
+        mapping,
+        [price],
+        0.01,
+        "units",
+        {"name": "Production", "active_hours_month": 744},
+        scenario,
+        [],
+        (Decimal("1"), Decimal("1"), Decimal("1")),
+        (Decimal("0.01"), Decimal("0.01"), Decimal("0.01")),
+        {},
+    )
+
+    period_amounts = [cast(float, period["amount"]) for period in periods]
+    inputs = cast(dict[str, object], line["inputs"])
+    assert period_amounts == [0.0, 0.0, 0.0]
+    assert line["annual_amount"] == sum(period_amounts[:12])
+    assert line["contract_amount"] == sum(period_amounts)
+    assert inputs["aggregate_contract_amount"] == "0.01"
+
+
+def test_semantically_equal_technical_snapshots_share_a_currentness_fingerprint() -> None:
+    first = VolumetrySnapshot(
+        id="technical-a",
+        project_id="project",
+        assumption_set_version="1.0.0",
+        triggered_by="test",
+        row_results={"row": {"messages": 10}},
+        consolidated={"oic": {"peak_packs_hour": 2}},
+        snapshot_metadata={"request_id": "first"},
+    )
+    repeated = VolumetrySnapshot(
+        id="technical-b",
+        project_id="project",
+        assumption_set_version="1.0.0",
+        triggered_by="test",
+        row_results={"row": {"messages": 10}},
+        consolidated={"oic": {"peak_packs_hour": 2}},
+        snapshot_metadata={"request_id": "second"},
+    )
+    changed = VolumetrySnapshot(
+        id="technical-c",
+        project_id="project",
+        assumption_set_version="1.0.0",
+        triggered_by="test",
+        row_results={"row": {"messages": 11}},
+        consolidated={"oic": {"peak_packs_hour": 2}},
+        snapshot_metadata={"request_id": "third"},
+    )
+
+    assert bom_service._technical_snapshot_semantic_fingerprint(
+        first
+    ) == bom_service._technical_snapshot_semantic_fingerprint(repeated)
+    assert bom_service._technical_snapshot_semantic_fingerprint(
+        first
+    ) != bom_service._technical_snapshot_semantic_fingerprint(changed)
+
+
 async def _seed_approved_commercial_release(
     session: AsyncSession,
     catalog: PriceCatalogSnapshot,
@@ -873,6 +1005,47 @@ def test_manual_pricing_policy_creates_visible_unpriced_bom_line() -> None:
     assert line["formula"] == "manual_pricing_required"
     assert line["warnings"] == [policy.guidance]
     assert line["status"] in bom_service.UNRESOLVED_BOM_LINE_STATUSES
+    inputs = cast(dict[str, object], line["inputs"])
+    provenance = cast(dict[str, object], line["provenance"])
+    technical_demand = cast(dict[str, object], inputs["technical_demand"])
+    provenance_demand = cast(dict[str, object], provenance["technical_demand"])
+    assert technical_demand["status"] == "explicit_input_required"
+    assert provenance_demand["blockers"] == [policy.guidance]
+
+
+def test_included_commercial_policy_preserves_resolved_zero_demand_provenance() -> None:
+    policy = ServiceCommercialPolicy(
+        id="included-policy",
+        service_profile_id="included-profile",
+        service_id="DATA_CATALOG",
+        classification="included_non_billable",
+        readiness="quote_ready",
+        publication_policy="included_zero",
+        tool_aliases=["OCI Data Catalog"],
+        dependent_service_ids=[],
+        required_inputs=[],
+        guidance="Included with the governed platform dependency.",
+        source_urls=["https://example.test/data-catalog"],
+        status="approved",
+        version="test",
+        confidence=1,
+    )
+
+    line = bom_service._commercial_policy_line(
+        policy,
+        {"name": "Production"},
+        status="included",
+        warning=policy.guidance,
+    )
+
+    inputs = cast(dict[str, object], line["inputs"])
+    provenance = cast(dict[str, object], line["provenance"])
+    demand = cast(dict[str, object], inputs["technical_demand"])
+    assert demand["status"] == "resolved"
+    assert demand["quantity"] == "0"
+    assert demand["adapter"] == "commercial_policy"
+    assert demand["blockers"] == []
+    assert provenance["technical_demand"] == demand
 
 
 def test_non_billable_mapping_cannot_replace_governed_commercial_policy() -> None:
@@ -2166,8 +2339,8 @@ async def test_bom_resolves_commercial_variant_per_environment(test_engine: Asyn
                 promoted_at=datetime.now(UTC),
             )
         )
-        for sequence, (name, mapping) in enumerate(
-            [("Production", mappings[1]), ("QA", mappings[0])], start=1
+        for sequence, (name, mapping, planned_quantity) in enumerate(
+            [("Production", mappings[1], 3), ("QA", mappings[0], 2)], start=1
         ):
             environment = DeploymentEnvironmentPlan(
                 scenario_id=scenario.id,
@@ -2190,8 +2363,8 @@ async def test_bom_resolves_commercial_variant_per_environment(test_engine: Asyn
                 start_multiplier=1,
                 end_multiplier=1,
                 interpolation="step",
-                start_quantity=1,
-                end_quantity=1,
+                start_quantity=planned_quantity,
+                end_quantity=planned_quantity,
                 quantity_unit="packs/hour",
             ))
         session.add_all([
@@ -2222,11 +2395,15 @@ async def test_bom_resolves_commercial_variant_per_environment(test_engine: Asyn
                 db=session,
             )
 
-        assert calculation.monthly_total == 2232
+        assert calculation.monthly_total == 5952
         assert {(line["environment"], line["part_number"]) for line in calculation.line_payloads} == {
             ("Production", "OIC-ENT"),
             ("QA", "OIC-STD"),
         }
+        assert {
+            (line["environment"], line["quantity"])
+            for line in calculation.line_payloads
+        } == {("Production", 3.0), ("QA", 2.0)}
         variant_labels: set[str] = set()
         for line in calculation.line_payloads:
             provenance = line["provenance"]
