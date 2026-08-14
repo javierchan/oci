@@ -88,6 +88,7 @@ async def authenticate_request(
             raise auth_service.unauthorized()
         _validate_cookie_origin(request)
         principal = await auth_service.authenticate_session(raw_session, db)
+        await db.commit()
 
     request.state.auth = principal
     _replace_actor_headers(request, principal)
@@ -104,6 +105,7 @@ async def authorize_project_request(
     candidate = request.path_params.get("project_id") or request.query_params.get("project_id")
     if candidate:
         await auth_service.require_project_access(principal, str(candidate), db)
+        await db.rollback()
         return principal
 
     run_id = request.path_params.get("run_id")
@@ -131,6 +133,7 @@ async def authorize_project_request(
                 detail={"detail": "AI review not found", "error_code": "AI_REVIEW_NOT_FOUND"},
             )
         await auth_service.require_project_access(principal, job.project_id, db)
+    await db.rollback()
     return principal
 
 

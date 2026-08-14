@@ -351,12 +351,13 @@ or restart decisions.
 | Migration state | Current and head at `20260814_0057` |
 | Authentication | Local login, forged-header rejection, cross-user `404`, and scoped read-only token lifecycle pass |
 | Browser authentication QA | Login, Account, project visibility, token create/revoke, and zero console warnings/errors pass |
+| API tests | 340 passed |
 | Calculation engine | 99 passed |
 | Pricing engine | 35 passed |
-| Frontend tests | 135 passed across 23 files |
+| Frontend tests | 142 passed across 24 files |
 | Static checks | Ruff, mypy, TypeScript, and ESLint passed |
 | Production build | Next.js production build passed |
-| App Knowledge | Deterministic drift check passed; source hash prefix `02796f3a3d72` |
+| App Knowledge | Deterministic drift check passed; source hash prefix `f0459e5b68fe`; 307/307 OCI provider vectors at 512 dimensions |
 
 Focused non-destructive browser authentication QA was rerun against the retained
 data stack. Destructive canonical browser cleanup flows still require an isolated

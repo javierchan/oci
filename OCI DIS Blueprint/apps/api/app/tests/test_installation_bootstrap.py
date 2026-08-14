@@ -63,6 +63,7 @@ async def test_bootstrap_creates_one_admin_token_membership_and_audit(
             )
         )
         assert event is not None
+        assert event.new_value is not None
         assert event.new_value["initial_api_token_created"] is True
         assert "password" not in str(event.new_value).casefold()
 

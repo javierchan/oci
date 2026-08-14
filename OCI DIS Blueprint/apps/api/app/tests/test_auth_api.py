@@ -93,6 +93,10 @@ async def test_local_session_ignores_spoofed_actor_and_owns_new_project(
         assert membership is not None
         assert membership.project_role == "Owner"
 
+    dashboard = await auth_api_client.get(f"/api/v1/dashboard/{project_id}/snapshots")
+    assert dashboard.status_code == 200, dashboard.text
+    assert dashboard.json()["snapshots"] == []
+
 
 async def test_project_membership_returns_404_across_users(
     auth_api_client: AsyncClient,

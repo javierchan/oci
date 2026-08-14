@@ -572,6 +572,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M75 | Fail-closed Persistent-context Assistant + Automatic Knowledge Governance | ✅ Complete | 2026-07-25 |
 | M76 | Ideal Enterprise Reference Project | ✅ Complete | 2026-07-25 |
 | M77 | OCI OKE Horizontal Scale + Observability Readiness | ⏳ Planned | — |
+| M78 | Provider-neutral Local Authentication + External API Tokens | ✅ Complete | 2026-08-14 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -583,8 +584,8 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   remains immutable rejected-source evidence
 - Reference seed data: `21` certified patterns, `9` architectural overlays, `27` governed canvas combinations, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `462 passed` (`328` API, `99` calc-engine, `35` pricing-engine)
-- Frontend: `135 passed`, strict TypeScript, ESLint, and production build green
+- Backend + calc-engine + pricing-engine: `474 passed` (`340` API, `99` calc-engine, `35` pricing-engine)
+- Frontend: `142 passed` across `24` files, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: real 4-source Oracle verification, scheduled no-change verification,
   and post-verification BOM jobs reach terminal `completed` states
 - Continuous commercial governance: `4/4` official sources preserved in Object
@@ -596,7 +597,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Web and API stack: all eight production services running and healthy in Docker Compose
 - M74 OCI semantic retrieval: authenticated tenancy and CLI token boundary,
   active on-demand Cohere/OpenAI embedding inventory in `us-chicago-1`, governed
-  Cohere Embed v4 selection at 512 dimensions, `282/282` committed provider
+  Cohere Embed v4 selection at 512 dimensions, `307/307` committed provider
   vectors, and completed App Assistant runs whose persisted evidence reports
   five matches in `embedding_space=provider`.
 - Pattern certification browser contract: `21/21` certified cards, `9/9` governed overlays, desktop light/dark and `390 px` mobile views, zero horizontal overflow, and zero console errors
@@ -645,7 +646,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   routine human approval. The final real-provider matrix passed `27/27` global
   cases and `4/4` Iconn project-dossier cases with provider-space retrieval,
   grounded delivery, and `fallback_used=false`; the active knowledge artifact
-  passed hash/model/dimension/coverage validation at `282/282` vectors.
+  passed hash/model/dimension/coverage validation at `307/307` vectors.
 - M76 ideal reference project: retained fictional project
   `6635ea67-c05d-44d3-aacf-19c5dd5d2bee` has `350/350` integrations at `QA = OK`,
   72 systems, 300 imported plus 50 manually captured rows, 12 excluded source
@@ -656,6 +657,13 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   contextual assistant matrix passed `4/4` with provider-space embeddings,
   grounded answers, `fallback_used=false`, and zero browser console warnings or
   errors.
+- M78 identity and installation onboarding: migration head `20260814_0057`,
+  Argon2id local credentials, opaque hashed sessions, project membership
+  isolation, editable usernames, Admin User Management, granular read-only API
+  tokens, the top-right account menu, and the idempotent first-Admin bootstrap
+  passed `340` API and `142` frontend tests. Browser QA covered login, Account,
+  project visibility, token create/revoke, and User Management with zero console
+  warnings/errors. OCI IAM remains an additional future identity provider.
 
 `AGENTS.md`, this README, the root workflow, and the current architecture
 documents define the active operational contract. Dated audit reports preserve
