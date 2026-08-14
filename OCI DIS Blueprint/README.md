@@ -457,6 +457,8 @@ To validate the admin synthetic pages through a repo-owned browser E2E path:
 ```bash
 cd apps/web
 npm run test:e2e:install
+PLAYWRIGHT_AUTH_USERNAME=<local-user> \
+PLAYWRIGHT_AUTH_PASSWORD=<local-password> \
 npm run test:e2e
 ```
 
@@ -464,6 +466,13 @@ The Playwright suite covers the Synthetic Lab landing page, terminal cleanup
 for `ephemeral-smoke`, terminal completion plus explicit cleanup for
 `retained-smoke`, and dashboard, catalog preview tabs, integration canvas,
 topology, Service Products, and Assumptions.
+
+The local user must already exist and have access to the governed fixture
+projects. CI creates a random, masked password for an isolated Admin, grants it
+membership only after fixture seeding, authenticates through `/api/v1/auth/login`,
+stores the opaque session in a mode-0600 temporary Playwright state file, and
+removes that file after the run. Browser tests never bypass the App's auth
+boundary or rely on the legacy actor headers as authentication.
 
 Containerized browser runs can set `PLAYWRIGHT_OUTPUT_DIR=/tmp/playwright-results`
 so traces and failure screenshots remain ephemeral.

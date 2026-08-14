@@ -134,6 +134,23 @@ jobs:
       - name: Seed isolated browser commercial release
         run: docker compose exec -T -e ALLOW_BROWSER_COMMERCIAL_FIXTURE=1 --user app api python scripts/seed_browser_commercial_fixture.py
 
+      - name: Provision isolated browser administrator
+        shell: bash
+        run: |
+          set -euo pipefail
+          e2e_password="$(openssl rand -base64 32)"
+          echo "::add-mask::$e2e_password"
+          printf '%s\n' "$e2e_password" | docker compose exec -T --user app api \
+            python scripts/manage_local_user.py \
+              --username playwright-e2e \
+              --email playwright-e2e@oci-dis.invalid \
+              --display-name "Playwright E2E" \
+              --role Admin \
+              --grant-existing-projects \
+              --password-stdin
+          echo "PLAYWRIGHT_AUTH_USERNAME=playwright-e2e" >> "$GITHUB_ENV"
+          echo "PLAYWRIGHT_AUTH_PASSWORD=$e2e_password" >> "$GITHUB_ENV"
+
       - name: Install Playwright Chromium
         run: npm --prefix apps/web run test:e2e:install
 
