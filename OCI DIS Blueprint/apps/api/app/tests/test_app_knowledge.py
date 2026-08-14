@@ -364,6 +364,9 @@ async def test_semantic_retrieval_embeds_once_and_never_needs_provider_network(
     for unit in retrieval_units:
         assert isinstance(unit, dict)
         unit["provider_embedding"] = list(unit["local_embedding"])
+    embedding_spaces = cast(dict[str, object], manifest["embedding_spaces"])
+    provider_space = cast(dict[str, object], embedding_spaces["provider"])
+    provider_space["dimensions"] = knowledge_builder.LOCAL_EMBEDDING_DIMENSIONS
 
     monkeypatch.setattr(app_knowledge_service, "load_derived_manifest", lambda: manifest)
     monkeypatch.setattr(knowledge_builder, "load_derived_manifest", lambda: manifest)
@@ -458,11 +461,43 @@ async def test_semantic_retrieval_fails_closed_when_configured_provider_embeddin
     monkeypatch.setattr(
         app_knowledge_service,
         "get_genai_settings_for_use_case",
-        lambda _: SimpleNamespace(OCI_GENAI_PROJECT_ID="configured-project"),
+        lambda _: SimpleNamespace(
+            OCI_GENAI_PROJECT_ID="configured-project",
+            OCI_GENAI_EMBEDDING_MODEL_NAME="Cohere Embed v4.0",
+        ),
     )
     monkeypatch.setattr(app_knowledge_service, "generate_embeddings", failed_embeddings)
 
     with pytest.raises(RuntimeError, match="provider_query_embedding_failed"):
+        await build_app_knowledge_evidence(
+            "How do I import a workbook?",
+            "/projects/project-1/import",
+            language="en",
+            project_id="project-1",
+            integration_id=None,
+        )
+
+
+@pytest.mark.asyncio
+async def test_semantic_retrieval_fails_closed_when_provider_manifest_is_partial(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifest = deepcopy(knowledge_builder.load_derived_manifest())
+    retrieval_units = cast(list[object], manifest["retrieval_units"])
+    first_unit = next(item for item in retrieval_units if isinstance(item, dict))
+    first_unit.pop("provider_embedding", None)
+
+    monkeypatch.setattr(app_knowledge_service, "load_derived_manifest", lambda: manifest)
+    monkeypatch.setattr(
+        app_knowledge_service,
+        "get_genai_settings_for_use_case",
+        lambda _: SimpleNamespace(
+            OCI_GENAI_PROJECT_ID="configured-project",
+            OCI_GENAI_EMBEDDING_MODEL_NAME="Cohere Embed v4.0",
+        ),
+    )
+
+    with pytest.raises(RuntimeError, match="provider_embedding_manifest_unavailable"):
         await build_app_knowledge_evidence(
             "How do I import a workbook?",
             "/projects/project-1/import",

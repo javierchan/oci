@@ -9,6 +9,7 @@ from app.core.config import get_genai_settings_for_use_case
 from app.knowledge.builder import (
     load_derived_manifest,
     local_semantic_embedding,
+    provider_embedding_errors,
     retrieve_semantic_knowledge,
 )
 from app.services.genai_client import generate_embeddings
@@ -80,13 +81,10 @@ def _resolve_route(route: str, *, project_id: str | None, integration_id: str | 
     return resolved
 
 
-def _has_provider_vectors() -> bool:
-    manifest = load_derived_manifest()
-    units = _as_list(manifest.get("retrieval_units"))
-    return any(
-        isinstance(unit, dict) and isinstance(unit.get("provider_embedding"), list)
-        for unit in units
-    )
+def _provider_model(manifest: dict[str, object]) -> str:
+    spaces = manifest.get("embedding_spaces")
+    provider = spaces.get("provider") if isinstance(spaces, dict) else None
+    return str(provider.get("model") or "") if isinstance(provider, dict) else ""
 
 
 def explicit_intent_cue(question: str) -> str | None:
@@ -109,9 +107,22 @@ async def _semantic_query(question: str, current_route: str) -> dict[str, object
     query_embedding = local_semantic_embedding(question)
     settings = get_genai_settings_for_use_case("support_assistant")
     provider_configured = bool(settings.OCI_GENAI_PROJECT_ID.strip())
-    provider_vectors_available = _has_provider_vectors()
-    if provider_configured and not provider_vectors_available:
-        raise RuntimeError("provider_embedding_manifest_unavailable")
+    manifest = load_derived_manifest()
+    manifest_errors = provider_embedding_errors(
+        manifest,
+        expected_model=(
+            settings.OCI_GENAI_EMBEDDING_MODEL_NAME
+            if provider_configured
+            else _provider_model(manifest)
+        ),
+    )
+    provider_vectors_available = not manifest_errors
+    if provider_configured:
+        if manifest_errors:
+            raise RuntimeError(
+                "provider_embedding_manifest_unavailable:"
+                + "; ".join(manifest_errors)
+            )
     if provider_vectors_available:
         result = await generate_embeddings(
             [question],

@@ -82,7 +82,6 @@ async def test_support_reranks_explicit_capability_question_within_semantic_top_
             embeddings=[[1.0, 0.0]],
         )
 
-    monkeypatch.setattr(app_knowledge_service, "_has_provider_vectors", lambda: True)
     monkeypatch.setattr(app_knowledge_service, "generate_embeddings", fake_embeddings)
     monkeypatch.setattr(
         app_knowledge_service,
