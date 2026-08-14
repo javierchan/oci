@@ -417,12 +417,14 @@ def test_shared_runtime_knowledge_refreshes_when_object_version_changes(
     first["runtime_revision"] = "one"
     storage_service.put_json(object_key, first)
     knowledge_builder.clear_knowledge_base_cache()
-    assert knowledge_builder.load_knowledge_base()["derived"]["runtime_revision"] == "one"
+    first_loaded = cast(dict[str, object], knowledge_builder.load_knowledge_base()["derived"])
+    assert first_loaded["runtime_revision"] == "one"
 
     second = deepcopy(first)
     second["runtime_revision"] = "two"
     storage_service.put_json(object_key, second)
-    assert knowledge_builder.load_knowledge_base()["derived"]["runtime_revision"] == "two"
+    second_loaded = cast(dict[str, object], knowledge_builder.load_knowledge_base()["derived"])
+    assert second_loaded["runtime_revision"] == "two"
     knowledge_builder.clear_knowledge_base_cache()
 
 

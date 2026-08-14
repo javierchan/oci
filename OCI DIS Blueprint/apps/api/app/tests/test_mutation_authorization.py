@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import cast
 
 from fastapi import HTTPException
 import pytest
@@ -33,7 +34,11 @@ def test_every_protected_mutation_has_explicit_policy() -> None:
                     project_role="Owner",
                 )
             except HTTPException as exc:
-                detail = exc.detail if isinstance(exc.detail, dict) else {}
+                detail: dict[str, object] = (
+                    cast(dict[str, object], exc.detail)
+                    if isinstance(exc.detail, dict)
+                    else {}
+                )
                 if detail.get("error_code") == "MUTATION_POLICY_REQUIRED":
                     uncovered.append(f"{method.upper()} {path}")
                 else:
@@ -66,7 +71,8 @@ def test_mutation_policy_denies_invalid_role_combinations(
             project_role=project_role,
         )
     assert raised.value.status_code == 403
-    assert raised.value.detail["error_code"] == error_code
+    detail = cast(dict[str, object], raised.value.detail)
+    assert detail["error_code"] == error_code
 
 
 @pytest.mark.parametrize(
