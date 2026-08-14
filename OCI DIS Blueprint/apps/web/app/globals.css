@@ -949,3 +949,8 @@ html.dark {
 .graph-edge-animated:hover {
   filter: brightness(1.05);
 }
+
+/* Guided mode preserves the governed data and routes while reducing advanced dashboard density. */
+[data-experience-mode="guided"] .expert-mode-only {
+  display: none;
+}

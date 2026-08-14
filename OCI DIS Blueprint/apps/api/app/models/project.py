@@ -3,10 +3,10 @@
 from __future__ import annotations
 
 import enum
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 
-from sqlalchemy import Boolean, DateTime, Enum as SAEnum, Float, ForeignKey, Integer, JSON, String, Text
+from sqlalchemy import Boolean, Date, DateTime, Enum as SAEnum, Float, ForeignKey, Integer, JSON, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -64,6 +64,41 @@ class Project(Base, UUIDMixin, TimestampMixin):
 
     import_batches: Mapped[list["ImportBatch"]] = relationship(back_populates="project")
     catalog_integrations: Mapped[list["CatalogIntegration"]] = relationship(back_populates="project")
+
+
+class ProjectSavedView(Base, UUIDMixin, TimestampMixin):
+    """A project-scoped, shareable view of an existing product surface."""
+
+    __tablename__ = "project_saved_views"
+
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    surface: Mapped[str] = mapped_column(String(32), nullable=False, default="catalog")
+    label: Mapped[str] = mapped_column(String(100), nullable=False)
+    filters: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    is_shared: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+
+
+class ProjectAttentionTask(Base, UUIDMixin, TimestampMixin):
+    """Human coordination metadata; never replaces a domain approval."""
+
+    __tablename__ = "project_attention_tasks"
+    __table_args__ = (
+        UniqueConstraint("project_id", "attention_key", name="uq_project_attention_task_key"),
+    )
+
+    project_id: Mapped[str] = mapped_column(ForeignKey("projects.id", ondelete="CASCADE"), nullable=False, index=True)
+    attention_key: Mapped[str] = mapped_column(String(255), nullable=False)
+    source: Mapped[str] = mapped_column(String(32), nullable=False)
+    title: Mapped[str] = mapped_column(String(500), nullable=False)
+    evidence_href: Mapped[str] = mapped_column(String(2048), nullable=False)
+    assignee: Mapped[Optional[str]] = mapped_column(String(255))
+    due_date: Mapped[Optional[date]] = mapped_column(Date)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, default="open")
+    note: Mapped[Optional[str]] = mapped_column(Text)
+    evidence: Mapped[Optional[dict]] = mapped_column(JSON)
+    created_by: Mapped[str] = mapped_column(String(36), nullable=False)
+    updated_by: Mapped[str] = mapped_column(String(36), nullable=False)
 
 
 class ImportBatch(Base, UUIDMixin, TimestampMixin):

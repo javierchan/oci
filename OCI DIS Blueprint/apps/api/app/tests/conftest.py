@@ -13,9 +13,11 @@ from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 from sqlalchemy.pool import StaticPool
 
 from ..core.db import get_db
+from ..core.auth import authorize_project_request
 from ..main import app
 from ..models import Base
 from ..services import storage_service
+from ..services.auth_service import AuthPrincipal
 
 
 @pytest.fixture(autouse=True)
@@ -109,6 +111,41 @@ async def api_client(test_engine: AsyncEngine) -> AsyncIterator[AsyncClient]:
         async with session_factory() as session:
             yield session
 
+    async def override_authorization() -> AuthPrincipal:
+        return AuthPrincipal(
+            user_id="integration-test",
+            email="integration-test@example.invalid",
+            display_name="Integration Test",
+            role="Admin",
+            authentication_method="session",
+            credential_id="test-session",
+            expires_at=None,
+            bypass_project_membership=True,
+        )
+
+    app.dependency_overrides[get_db] = override_get_db
+    app.dependency_overrides[authorize_project_request] = override_authorization
+    transport = ASGITransport(app=cast(Any, app))
+    async with AsyncClient(transport=transport, base_url="http://testserver") as client:
+        yield client
+    app.dependency_overrides.clear()
+
+
+@pytest_asyncio.fixture
+async def auth_api_client(test_engine: AsyncEngine) -> AsyncIterator[AsyncClient]:
+    """Exercise the real authentication dependencies against the isolated test DB."""
+
+    session_factory = async_sessionmaker(
+        test_engine,
+        expire_on_commit=False,
+        class_=AsyncSession,
+    )
+
+    async def override_get_db() -> AsyncIterator[AsyncSession]:
+        async with session_factory() as session:
+            yield session
+
+    app.dependency_overrides.clear()
     app.dependency_overrides[get_db] = override_get_db
     transport = ASGITransport(app=cast(Any, app))
     async with AsyncClient(transport=transport, base_url="http://testserver") as client:

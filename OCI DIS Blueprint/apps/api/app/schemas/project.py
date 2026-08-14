@@ -15,7 +15,10 @@ class ProjectCreateRequest(BaseModel):
 
     name: str = Field(min_length=1, max_length=255)
     customer_name: str = Field(min_length=1, max_length=500)
-    owner_id: str
+    owner_id: Optional[str] = Field(
+        default=None,
+        description="Deprecated input. Ownership is always derived from the authenticated user.",
+    )
     description: Optional[str] = None
     project_metadata: Optional[dict[str, object]] = None
 

@@ -18,8 +18,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.core.db import get_db
+from app.core.auth import authorize_project_request
 from app.core.readiness import check_migration_readiness
 from app.routers import (
+    auth_router,
     agents_router,
     support_router,
     projects_router,
@@ -40,6 +42,8 @@ from app.routers import (
     bom_router,
     pricing_router,
     external_capture_router,
+    project_coordination_router,
+    users_router,
 )
 from app.schemas.readiness import ObjectStorageReadinessResponse, ReadinessResponse
 from app.services import storage_service
@@ -80,26 +84,30 @@ app.add_middleware(GZipMiddleware, minimum_size=1000)
 
 # Mount all route groups
 API_PREFIX = "/api/v1"
-app.include_router(projects_router, prefix=API_PREFIX)
-app.include_router(agents_router, prefix=API_PREFIX)
-app.include_router(support_router, prefix=API_PREFIX)
-app.include_router(imports_router, prefix=API_PREFIX)
-app.include_router(catalog_router, prefix=API_PREFIX)
-app.include_router(patterns_router, prefix=API_PREFIX)
-app.include_router(dictionaries_router, prefix=API_PREFIX)
-app.include_router(assumptions_router, prefix=API_PREFIX)
-app.include_router(recalculate_router, prefix=API_PREFIX)
-app.include_router(volumetry_router, prefix=API_PREFIX)
-app.include_router(dashboard_router, prefix=API_PREFIX)
-app.include_router(justifications_router, prefix=API_PREFIX)
-app.include_router(audit_router, prefix=API_PREFIX)
-app.include_router(exports_router, prefix=API_PREFIX)
-app.include_router(service_products_router, prefix=API_PREFIX)
-app.include_router(admin_synthetic_router, prefix=API_PREFIX)
-app.include_router(ai_reviews_router, prefix=API_PREFIX)
-app.include_router(pricing_router, prefix=API_PREFIX)
-app.include_router(bom_router, prefix=API_PREFIX)
-app.include_router(external_capture_router, prefix=API_PREFIX)
+app.include_router(auth_router, prefix=API_PREFIX)
+protected_dependencies = [Depends(authorize_project_request)]
+app.include_router(projects_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(agents_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(support_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(imports_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(catalog_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(patterns_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(dictionaries_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(assumptions_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(recalculate_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(volumetry_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(dashboard_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(justifications_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(audit_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(exports_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(service_products_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(admin_synthetic_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(ai_reviews_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(pricing_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(bom_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(external_capture_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(project_coordination_router, prefix=API_PREFIX, dependencies=protected_dependencies)
+app.include_router(users_router, prefix=API_PREFIX, dependencies=protected_dependencies)
 
 
 @app.get("/health", tags=["Health"])

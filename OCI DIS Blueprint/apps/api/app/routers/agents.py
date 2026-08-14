@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException, Query, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.core.auth import AuthorizedPrincipal
 from app.schemas.agent import (
     AgentApprovalDecisionRequest,
     AgentCreateRequest,
@@ -19,7 +20,7 @@ from app.schemas.agent import (
     KnowledgeMaintenanceJobResponse,
     KnowledgeMaintenanceReviewRequest,
 )
-from app.services import agent_service
+from app.services import agent_service, auth_service
 from app.services import knowledge_maintenance_service
 from app.services.authz import require_roles
 from app.workers.agent_worker import execute_agent_run_task
@@ -120,10 +121,13 @@ async def list_agents(
 @router.post("/runs", response_model=AgentRunResponse, status_code=status.HTTP_202_ACCEPTED, summary="Create an agent run")
 async def create_agent_run(
     body: AgentCreateRequest,
+    principal: AuthorizedPrincipal,
     db: AsyncSession = Depends(get_db),
     actor_id: str = Header("api-user", alias="X-Actor-Id"),
     actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AgentRunResponse:
+    if body.project_id and not principal.bypass_project_membership:
+        await auth_service.require_project_access(principal, body.project_id, db)
     async with db.begin():
         run = await agent_service.create_agent_run(body, actor_id, actor_role, db)
     try:
@@ -137,11 +141,20 @@ async def create_agent_run(
 
 @router.get("/runs", response_model=AgentRunListResponse, summary="List governed agent runs")
 async def list_agent_runs(
+    principal: AuthorizedPrincipal,
     project_id: str | None = Query(None), limit: int = Query(20, ge=1, le=50),
     db: AsyncSession = Depends(get_db),
     actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> AgentRunListResponse:
-    return await agent_service.list_agent_runs(db, actor_role=actor_role, project_id=project_id, limit=limit)
+    return await agent_service.list_agent_runs(
+        db,
+        actor_id=principal.user_id,
+        actor_role=actor_role,
+        project_id=project_id,
+        allowed_project_ids=principal.allowed_project_ids,
+        bypass_project_membership=principal.bypass_project_membership,
+        limit=limit,
+    )
 
 
 @router.get("/runs/{run_id}", response_model=AgentRunResponse, summary="Inspect one agent run")

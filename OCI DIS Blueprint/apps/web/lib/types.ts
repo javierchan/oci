@@ -12,6 +12,80 @@ export interface Project {
   updated_at: string;
 }
 
+export interface AuthUser {
+  id: string;
+  username: string | null;
+  email: string;
+  display_name: string;
+  role: "Admin" | "Architect" | "Analyst" | "Viewer";
+  providers: Array<"local" | "oci_iam">;
+  project_count: number;
+}
+
+export interface AuthSession {
+  user: AuthUser;
+  authentication_method: "session" | "api_token";
+  expires_at: string | null;
+}
+
+export interface ApiTokenRecord {
+  id: string;
+  name: string;
+  token_prefix: string;
+  scopes: string[];
+  project_ids: string[] | null;
+  expires_at: string | null;
+  last_used_at: string | null;
+  revoked_at: string | null;
+  created_at: string;
+}
+
+export interface ApiTokenCreated extends ApiTokenRecord {
+  token: string;
+}
+
+export interface ApiTokenList {
+  tokens: ApiTokenRecord[];
+}
+
+export interface ApiTokenScope {
+  code: string;
+  label: string;
+  description: string;
+}
+
+export interface ApiTokenScopeList {
+  scopes: ApiTokenScope[];
+}
+
+export type AppRole = "Admin" | "Architect" | "Analyst" | "Viewer";
+export type ProjectMembershipRole = "Owner" | "Contributor" | "Viewer";
+
+export interface ManagedUserMembership {
+  project_id: string;
+  project_name: string;
+  project_role: ProjectMembershipRole;
+}
+
+export interface ManagedUser {
+  id: string;
+  username: string | null;
+  email: string;
+  display_name: string;
+  role: AppRole;
+  is_active: boolean;
+  providers: Array<"local" | "oci_iam">;
+  memberships: ManagedUserMembership[];
+  last_authenticated_at: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ManagedUserList {
+  users: ManagedUser[];
+  total: number;
+}
+
 export interface ProjectList {
   projects: Project[];
   total: number;
@@ -1877,6 +1951,50 @@ export interface AuditPage {
   total: number;
   page: number;
   page_size: number;
+}
+
+export type ProjectSavedViewSurface = "catalog" | "topology";
+
+export interface ProjectSavedView {
+  id: string;
+  project_id: string;
+  surface: ProjectSavedViewSurface;
+  label: string;
+  filters: Record<string, unknown>;
+  is_shared: boolean;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectSavedViewList {
+  views: ProjectSavedView[];
+}
+
+export type ProjectAttentionSource = "qa" | "topology" | "coverage" | "bom";
+export type ProjectAttentionTaskStatus = "open" | "in_progress" | "resolved";
+
+export interface ProjectAttentionTask {
+  id: string;
+  project_id: string;
+  attention_key: string;
+  source: ProjectAttentionSource;
+  title: string;
+  evidence_href: string;
+  assignee: string | null;
+  due_date: string | null;
+  status: ProjectAttentionTaskStatus;
+  note: string | null;
+  evidence: Record<string, unknown> | null;
+  created_by: string;
+  updated_by: string;
+  is_overdue: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProjectAttentionTaskList {
+  tasks: ProjectAttentionTask[];
 }
 
 export interface ManualIntegrationCreate {

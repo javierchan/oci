@@ -103,7 +103,6 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
       const project = await api.createProject({
         name: projectName,
         customer_name: normalizedCustomerName,
-        owner_id: "web-user",
       });
       setProjects((current: ProjectRow[]) => [{ project, rowCount: 0 }, ...current]);
       setName("");

@@ -959,8 +959,8 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
 - [ ] Deploy all primary application, data, and observability resources in
       Mexico Central (Queretaro), `mx-queretaro-1`, spreading supported
       workloads across its three Fault Domains without claiming multi-AD HA.
-- [ ] Replace caller-controlled actor headers with OCI IAM Identity Domains
-      OIDC/JWT authentication and server-derived roles.
+- [ ] Add OCI IAM Identity Domains OIDC/JWT as an additional verified identity
+      provider over the App user, local-auth, role, and membership boundary.
 - [ ] Publish App knowledge and OCI embeddings as one immutable shared Object
       Storage artifact with a PostgreSQL active-version pointer and per-pod hash
       readiness.
@@ -988,6 +988,35 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       end-to-end trace, redaction/cardinality, seven-day telemetry cost baseline,
       backup, and rollback tests in an authorized non-production OCI environment
       in `mx-queretaro-1`.
+
+### M78 — Provider-neutral Local Authentication + External API Tokens
+- [x] Add App users, local Argon2id credentials, opaque hashed sessions,
+      provider identities, project memberships, and revocable API tokens.
+- [x] Authenticate all functional API routes and overwrite legacy actor headers
+      from the authenticated principal before existing role checks execute.
+- [x] Isolate project lists, records, agents, and assistant evidence by live
+      project membership; return `404` for cross-user project access.
+- [x] Add an Account workspace for password rotation and one-time creation of
+      expiring API tokens that can be narrowed independently by project and
+      governed read-only evidence capability.
+- [x] Add Admin User Management for local user creation, editable usernames,
+      App roles, account activation, password reset, and project memberships.
+- [x] Move the authenticated user identity and account actions from the desktop
+      sidebar into an accessible initials dropdown in the upper-right top bar.
+- [x] Enforce fail-closed granular scopes for external bearer tokens so Codex and
+      integrations can query only approved API domains without changing browser-
+      session behavior or mutating data; retain legacy `api:read` compatibility.
+- [x] Add an idempotent first-install bootstrap that creates exactly one Admin,
+      supports mounted or generated passwords and an optional granular API token,
+      emits no secrets to normal logs, and is reusable as a future OCI Job.
+- [x] Keep OCI IAM Identity Domains as a future additional identity provider on
+      the same App user; never replace local auth or duplicate memberships.
+- [x] **Exit criteria**: migration head `20260814_0057`, focused/full API and
+      frontend gates, OpenAPI and App Knowledge drift checks, healthy Compose
+      runtime, bad-login lockout, cross-user `404`, forged-header rejection,
+      Admin-only user management, editable username, first-install bootstrap
+      idempotency, scoped token read/write denial, and browser account-menu/user-
+      management/token lifecycle pass.
 
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated

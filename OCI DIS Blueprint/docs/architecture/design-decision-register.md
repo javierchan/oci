@@ -26,9 +26,10 @@ must receive a dedicated record before production deployment.
 | DD-16 | Accepted | Keep one canonical repository-root CI workflow. | Duplicate workflows had drifted and created false confidence. | API, engines, frontend, OpenAPI, migrations, images, and browser gates share one release contract. | ADR required |
 | DD-17 | Planned | Deploy the primary platform in `mx-queretaro-1` and spread stateless replicas across three Fault Domains. | Queretaro is the required data and operational region; the region has one Availability Domain. | Fault-Domain spread and disruption budgets are mandatory; this is not a regional disaster-recovery solution. | ADR required before OCI creation |
 | DD-18 | Planned | Keep OCI GenAI in `us-chicago-1` as a monitored remote dependency with no assistant answer fallback. | Required models and Guardrails are remote; distance does not justify moving the primary platform. | Cross-region latency, egress, quota, and failure alarms are part of release evidence. | ADR required before OCI creation |
-| DD-19 | Planned | Derive identity and roles from OCI IAM tokens and reject caller-supplied identity headers. | Current role checks trust unverified client headers. | Production ingress and API authorization must bind actor identity to a verified subject. | ADR required |
+| DD-19 | Accepted | Use a provider-neutral App user with local authentication, opaque sessions, project memberships, and read-only scoped API tokens; never trust caller-selected identity headers. | The App needs functional local access and external queries before OCI IAM is integrated. | Sessions and tokens share live membership authorization; API tokens cannot mutate. | [ADR-003](../adr/ADR-003-provider-neutral-local-authentication.md) |
 | DD-20 | Planned | Publish App Knowledge as an immutable Object Storage artifact with a transactional active-version pointer. | Per-container `/tmp` publication diverges across replicas. | A replica serves only a complete active hash and readiness fails if that version is unavailable. | ADR required |
 | DD-21 | Planned | Use OCI-native observability with OpenTelemetry correlation. | Local logs and bounded GenAI counters cannot support a distributed OKE service. | Metrics and traces exclude customer content, prompts, credentials, and high-cardinality identities. | ADR required |
+| DD-22 | Planned | Add OCI IAM Identity Domains as another verified identity on the existing App user. | Enterprise SSO must not replace local authentication or duplicate project authorization state. | Validate issuer, signature, audience, expiry, subject, and group mapping; link only through a governed verified flow. | ADR required before OCI creation |
 
 ## Decision principles
 
@@ -49,7 +50,7 @@ must receive a dedicated record before production deployment.
 
 Before OCI provisioning, create dedicated ADRs in this order:
 
-1. Production identity and role derivation (`DD-19`).
+1. OCI IAM identity linking and role derivation (`DD-22`).
 2. Shared App Knowledge publication (`DD-20`).
 3. OKE topology, database connection budget, and queue semantics (`DD-17`).
 4. Queretaro-to-Chicago dependency and regional recovery (`DD-18`).

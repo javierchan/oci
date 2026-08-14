@@ -7,6 +7,11 @@ import { Boxes, Download, ExternalLink, List, Network } from "lucide-react";
 import { AiReviewButton } from "@/components/ai-review-button";
 import { Breadcrumb } from "@/components/breadcrumb";
 import { ProjectCustomerEditor } from "@/components/project-customer-editor";
+import { ProjectAttentionCenter } from "@/components/project-attention-center";
+import { ProjectAdoptionMetrics } from "@/components/project-adoption-metrics";
+import { ProjectChangeSummary } from "@/components/project-change-summary";
+import { ProjectDecisionBrief } from "@/components/project-decision-brief";
+import { ProjectGoalOnboarding } from "@/components/project-goal-onboarding";
 import { ProjectWorkflowGuide } from "@/components/project-workflow-guide";
 import { QaWorkQueue } from "@/components/qa-work-queue";
 import { RecalculateButton } from "@/components/recalculate-button";
@@ -16,7 +21,8 @@ import { displayQaStatus, formatCompactNumber, formatDate, formatNumber } from "
 import { parityBenchmark } from "@/lib/parity";
 import { isProjectNotFoundError } from "@/lib/project-errors";
 import { deriveProjectWorkflowGuide } from "@/lib/project-workflow";
-import type { DashboardCoverageMetric, DashboardProductUsage, DashboardSnapshot } from "@/lib/types";
+import { deriveAdoptionMetrics, deriveChangeSummary, deriveDecisionBrief, deriveProjectAttention } from "@/lib/project-decision";
+import type { DashboardCoverageMetric, DashboardProductUsage } from "@/lib/types";
 
 type ProjectDashboardPageProps = {
   params: Promise<{
@@ -105,19 +111,27 @@ export default async function ProjectDashboardPage({
     }
     throw error;
   }
-  const [catalogPage, snapshots, dashboardSnapshots, baselineLookup] = await Promise.all([
+  const [catalogPage, snapshots, dashboardSnapshots, baselineLookup, graph, bomSnapshots, audit] = await Promise.all([
     api.listCatalog(projectId, { page: 1, page_size: 1 }),
     api.listSnapshots(projectId),
     api.listDashboardSnapshots(projectId),
     api.getAiReviewBaseline(projectId, { scope: "project" }).catch(() => ({ baseline: null })),
+    api.getGraph(projectId).catch(() => null),
+    api.listBomSnapshots(projectId, 2).catch(() => ({ snapshots: [], total: 0 })),
+    api.listAudit(projectId, { page: 1, page_size: 10 }).catch(() => ({ events: [], total: 0, page: 1, page_size: 10 })),
   ]);
 
   const latestSnapshot = snapshots.snapshots[0];
   const prevSnapshot = snapshots.snapshots[1];
   const consolidated = latestSnapshot?.consolidated;
-  const latestDashboard: DashboardSnapshot | null = dashboardSnapshots.snapshots[0]
-    ? await api.getDashboardSnapshot(projectId, dashboardSnapshots.snapshots[0].snapshot_id)
-    : null;
+  const [latestDashboard, previousDashboard] = await Promise.all([
+    dashboardSnapshots.snapshots[0]
+      ? api.getDashboardSnapshot(projectId, dashboardSnapshots.snapshots[0].snapshot_id)
+      : Promise.resolve(null),
+    dashboardSnapshots.snapshots[1]
+      ? api.getDashboardSnapshot(projectId, dashboardSnapshots.snapshots[1].snapshot_id)
+      : Promise.resolve(null),
+  ]);
   const coverageMetrics: Array<[string, DashboardCoverageMetric]> = latestDashboard
     ? [
         ["Payload Coverage", latestDashboard.charts.coverage.payload],
@@ -149,6 +163,16 @@ export default async function ProjectDashboardPage({
     latestSnapshotId: latestSnapshot?.snapshot_id ?? null,
     dashboard: latestDashboard,
   });
+  const attention = deriveProjectAttention(projectId, latestDashboard, graph, bomSnapshots.snapshots[0] ?? null);
+  const decisionBrief = deriveDecisionBrief(projectId, latestDashboard, latestSnapshot, attention);
+  const changeSummary = deriveChangeSummary(
+    latestSnapshot,
+    prevSnapshot,
+    latestDashboard,
+    previousDashboard,
+    audit.events,
+  );
+  const adoptionMetrics = deriveAdoptionMetrics(audit.events, audit.total, catalogPage.total);
 
   function pct(value: number): string {
     return qaTotal > 0 ? `${Math.round((value / qaTotal) * 100)}% of total` : "—";
@@ -308,15 +332,20 @@ export default async function ProjectDashboardPage({
         />
       </section>
 
-      <ProjectWorkflowGuide guide={workflowGuide} />
-      <QaWorkQueue
-        projectId={projectId}
-        reviewCount={qaBreakdown.REVISAR ?? 0}
-        pendingCount={qaBreakdown.PENDING ?? 0}
-        risks={workflowGuide.qaRisks}
-      />
+        <ProjectDecisionBrief brief={decisionBrief} />
+        <ProjectGoalOnboarding projectId={projectId} />
+        <ProjectAttentionCenter projectId={projectId} items={attention} />
+        <ProjectChangeSummary changes={changeSummary} />
+        <ProjectAdoptionMetrics metrics={adoptionMetrics} />
+        <ProjectWorkflowGuide guide={workflowGuide} />
+        <QaWorkQueue
+          projectId={projectId}
+          reviewCount={qaBreakdown.REVISAR ?? 0}
+          pendingCount={qaBreakdown.PENDING ?? 0}
+          risks={workflowGuide.qaRisks}
+        />
 
-      <section className="space-y-5" aria-labelledby="product-footprint-heading">
+      <section className="expert-mode-only space-y-5" aria-labelledby="product-footprint-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="app-label">Captured Architecture Footprint</p>
@@ -380,7 +409,7 @@ export default async function ProjectDashboardPage({
         )}
       </section>
 
-      <section className="space-y-4" aria-labelledby="technical-sizing-heading">
+      <section className="expert-mode-only space-y-4" aria-labelledby="technical-sizing-heading">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="app-label">Technical Sizing</p>
@@ -485,7 +514,7 @@ export default async function ProjectDashboardPage({
       </section>
 
       {latestDashboard ? (
-        <section className="space-y-6">
+        <section className="expert-mode-only space-y-6">
           <div className="flex flex-wrap items-center justify-between gap-3 border-y border-[var(--color-border)] py-3 text-sm">
             <div>
               <span className="font-medium text-[var(--color-text-primary)]">Service rules</span>

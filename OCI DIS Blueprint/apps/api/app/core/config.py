@@ -17,6 +17,16 @@ class Settings(BaseSettings):
         "http://localhost:3000",
     ]
 
+    # Provider-neutral authentication. Local credentials are available now;
+    # OCI IAM will be added as another identity provider, not a replacement.
+    AUTH_SESSION_COOKIE_NAME: str = "oci_dis_session"
+    AUTH_SESSION_TTL_HOURS: int = 12
+    AUTH_COOKIE_SECURE: bool = False
+    AUTH_PASSWORD_MIN_LENGTH: int = 12
+    AUTH_MAX_FAILED_ATTEMPTS: int = 5
+    AUTH_LOCKOUT_MINUTES: int = 15
+    AUTH_API_TOKEN_MAX_DAYS: int = 365
+
     # Database
     DATABASE_URL: str = "postgresql+asyncpg://dis:dis@localhost:5432/oci_dis"
     DATABASE_POOL_SIZE: int = 10

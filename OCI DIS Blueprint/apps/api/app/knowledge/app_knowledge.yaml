@@ -1,5 +1,34 @@
 version: 1.1.0
 sections:
+  - id: identity-access
+    name: Identity and access
+    purpose: Bootstrap the first administrator, authenticate local users, manage App roles and project memberships, rotate passwords, and issue least-privilege read-only API tokens for external clients.
+    purpose_es: Crear de forma segura el primer administrador, autenticar usuarios locales, administrar roles y membresías por proyecto, rotar contraseñas y emitir tokens API de solo lectura con privilegio mínimo.
+    when_to_use: Use the one-shot bootstrap only for a new installation, Account for your own password and API tokens, and User Management to create, rename, assign, disable, or reset local users.
+    when_to_use_es: Usa el bootstrap de una sola ejecución únicamente en una instalación nueva, Account para tu contraseña y tokens, y User Management para crear, renombrar, asignar, desactivar o restablecer usuarios locales.
+    steps:
+      - Sign in with the local username and password provisioned by an administrator.
+      - Open the avatar menu for Account security or, when authorized, User management.
+      - Assign the App role and explicit project memberships, then create API tokens with only the required read scopes and project subset.
+    steps_es:
+      - Inicia sesión con el usuario local y contraseña provisionados por un administrador.
+      - Abre el menú del avatar para Account security o, si estás autorizado, User management.
+      - Asigna rol y proyectos, y crea tokens únicamente con los permisos de lectura y proyectos necesarios.
+    routes: ["/login", "/account", "/admin/users"]
+    endpoints:
+      - { method: POST, path: /api/v1/auth/login }
+      - { method: GET, path: /api/v1/auth/me }
+      - { method: GET, path: /api/v1/auth/api-token-scopes }
+      - { method: POST, path: /api/v1/auth/api-tokens }
+      - { method: GET, path: /api/v1/admin/users }
+      - { method: PATCH, path: "/api/v1/admin/users/{user_id}" }
+      - { method: PUT, path: "/api/v1/admin/users/{user_id}/memberships" }
+    exports: []
+    entities: [AppUser, AuthIdentity, LocalCredential, AuthSession, ApiToken, ProjectMembership]
+    supported_actions: [bootstrap first administrator, sign in locally, change password, edit username, create user, assign App role, assign project membership, create scoped API token, revoke API token, sign out]
+    unsupported_claims: [public self-registration, automatic second administrator bootstrap, API token write access, token permission beyond current user access, OCI IAM sign-in today]
+    keywords: [installation, onboarding, bootstrap, initial admin, login, sign in, account, user management, username, password, role, permissions, membership, API token, Codex, authentication, instalación, usuario, contraseña, permisos]
+
   - id: projects
     name: Projects
     purpose: Create and manage isolated architecture assessment workspaces, then review each project's technical dashboard and governed lifecycle.

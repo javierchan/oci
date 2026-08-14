@@ -4,7 +4,7 @@
 
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Bookmark, BookmarkPlus, ChevronRight, Pencil, SearchX, Trash2, X } from "lucide-react";
+import { Bookmark, BookmarkPlus, Check, ChevronRight, Pencil, SearchX, Share2, Trash2, X } from "lucide-react";
 
 import { ComplexityBadge } from "@/components/complexity-badge";
 import { PatternBadge } from "@/components/pattern-badge";
@@ -118,9 +118,29 @@ export function CatalogTable({
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string>("");
   const [savedViews, setSavedViews] = useState<SavedCatalogView[]>(() => readSavedViews(projectId));
+  const [shared, setShared] = useState<boolean>(false);
   const skippedInitialLoad = useRef<boolean>(false);
   const skippedInitialUrlSync = useRef<boolean>(false);
   const deferredSearch = useDeferredValue(search);
+
+  useEffect(() => {
+    let cancelled = false;
+    void api.listProjectSavedViews(projectId, "catalog").then((response) => {
+      if (cancelled) return;
+      const remote = response.views.map((view) => ({
+        id: view.id,
+        label: view.label,
+        search: typeof view.filters.search === "string" ? view.filters.search : "",
+        qaStatus: typeof view.filters.qa_status === "string" ? view.filters.qa_status : "",
+        pattern: typeof view.filters.pattern === "string" ? view.filters.pattern : "",
+        brand: typeof view.filters.brand === "string" ? view.filters.brand : "",
+      }));
+      setSavedViews(remote);
+    }).catch(() => {
+      // Local browser views remain available while an older API is being upgraded.
+    });
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -275,31 +295,44 @@ export function CatalogTable({
     setPage(1);
   }
 
-  function saveCurrentView(): void {
-    const view: SavedCatalogView = {
-      id: `${Date.now()}`,
-      label: `View ${savedViews.length + 1}`,
-      search,
-      qaStatus,
-      pattern,
-      brand,
-    };
-    const next = [...savedViews, view].slice(-8);
-    setSavedViews(next);
+  async function saveCurrentView(): Promise<void> {
+    const label = window.prompt("Name this shared catalog view", `View ${savedViews.length + 1}`)?.trim();
+    if (!label) return;
     try {
-      window.localStorage.setItem(`${SAVED_VIEW_STORAGE_PREFIX}${projectId}`, JSON.stringify(next));
-    } catch {
-      // The current view still works when browser storage is unavailable.
+      const response = await api.createProjectSavedView(projectId, {
+        surface: "catalog", label, is_shared: true,
+        filters: { search, qa_status: qaStatus, pattern, brand, source_system: sourceSystem, destination_system: destinationSystem },
+      });
+      setSavedViews((current) => [...current, { id: response.id, label: response.label, search, qaStatus, pattern, brand }]);
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to save the shared view.");
     }
   }
 
-  function removeSavedView(viewId: string): void {
-    const next = savedViews.filter((view) => view.id !== viewId);
-    setSavedViews(next);
+  async function removeSavedView(viewId: string): Promise<void> {
     try {
-      window.localStorage.setItem(`${SAVED_VIEW_STORAGE_PREFIX}${projectId}`, JSON.stringify(next));
+      await api.deleteProjectSavedView(projectId, viewId);
+      setSavedViews((current) => current.filter((view) => view.id !== viewId));
+    } catch (caughtError) {
+      setError(caughtError instanceof Error ? caughtError.message : "Unable to remove the shared view.");
+    }
+  }
+
+  async function shareCurrentView(): Promise<void> {
+    const query = new URLSearchParams();
+    if (search) query.set("search", search);
+    if (qaStatus) query.set("qa_status", qaStatus);
+    if (pattern) query.set("pattern", pattern);
+    if (brand) query.set("brand", brand);
+    if (sourceSystem) query.set("source_system", sourceSystem);
+    if (destinationSystem) query.set("destination_system", destinationSystem);
+    const href = `${window.location.origin}/projects/${projectId}/catalog${query.size > 0 ? `?${query.toString()}` : ""}`;
+    try {
+      await navigator.clipboard.writeText(href);
+      setShared(true);
+      window.setTimeout(() => setShared(false), 1800);
     } catch {
-      // The in-memory list remains accurate for this session.
+      window.prompt("Copy this governed catalog view", href);
     }
   }
 
@@ -444,19 +477,28 @@ export function CatalogTable({
           </button>
           <button
             type="button"
-            onClick={saveCurrentView}
+            onClick={() => void saveCurrentView()}
             className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs"
-            title="Save the current search and filters in this browser"
+            title="Save the current filters as a shared, audited project view"
           >
             <BookmarkPlus className="h-3.5 w-3.5" />
             Save current
+          </button>
+          <button
+            type="button"
+            onClick={() => void shareCurrentView()}
+            className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs"
+            title="Copy a shareable URL with the current governed filters"
+          >
+            {shared ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
+            {shared ? "Copied" : "Share view"}
           </button>
           {savedViews.map((view) => (
             <span key={view.id} className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] text-xs">
               <button type="button" onClick={() => applySavedView(view)} className="px-2.5 py-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
                 {view.label}
               </button>
-              <button type="button" onClick={() => removeSavedView(view.id)} className="border-l border-[var(--color-border)] px-1.5 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]" aria-label={`Remove ${view.label}`}>
+              <button type="button" onClick={() => void removeSavedView(view.id)} className="border-l border-[var(--color-border)] px-1.5 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]" aria-label={`Remove ${view.label}`}>
                 <Trash2 className="h-3 w-3" />
               </button>
             </span>

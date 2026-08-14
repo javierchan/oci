@@ -28,7 +28,23 @@ from app.models.governance import (
     ServiceVerificationFinding,
     ServiceVerificationJob,
 )
-from app.models.project import CatalogIntegration, ImportBatch, ImportMappingProfile, Project, SourceIntegrationRow
+from app.models.identity import (
+    ApiToken,
+    AppUser,
+    AuthIdentity,
+    AuthSession,
+    LocalCredential,
+    ProjectMembership,
+)
+from app.models.project import (
+    CatalogIntegration,
+    ImportBatch,
+    ImportMappingProfile,
+    Project,
+    ProjectAttentionTask,
+    ProjectSavedView,
+    SourceIntegrationRow,
+)
 from app.models.pricing import (
     BomJob,
     BomLinePeriod,
@@ -65,6 +81,8 @@ from app.models.snapshot import AuditEvent, DashboardSnapshot, JustificationReco
 from app.models.synthetic import SyntheticGenerationJob
 
 __all__ = [
+    "ApiToken",
+    "AppUser",
     "AiReviewJob",
     "AiReviewBaseline",
     "AiReviewJobStatus",
@@ -79,6 +97,8 @@ __all__ = [
     "SupportConversation",
     "SupportMessage",
     "AssumptionSet",
+    "AuthIdentity",
+    "AuthSession",
     "AuditEvent",
     "Base",
     "BomJob",
@@ -108,9 +128,13 @@ __all__ = [
     "ImportBatch",
     "ImportMappingProfile",
     "JustificationRecord",
+    "LocalCredential",
     "PatternDefinition",
     "PromptTemplateVersion",
     "Project",
+    "ProjectMembership",
+    "ProjectAttentionTask",
+    "ProjectSavedView",
     "PriceCatalogSnapshot",
     "PriceItem",
     "PriceSource",

@@ -148,7 +148,14 @@ class SupportConversation(Base, UUIDMixin, TimestampMixin):
     """One browser-session-isolated support conversation."""
 
     __tablename__ = "support_conversations"
-    __table_args__ = (UniqueConstraint("session_id", "status", name="uq_support_conversation_session_status"),)
+    __table_args__ = (
+        UniqueConstraint(
+            "actor_id",
+            "session_id",
+            "status",
+            name="uq_support_conversation_actor_session_status",
+        ),
+    )
 
     session_id: Mapped[str] = mapped_column(String(36), nullable=False, index=True)
     actor_id: Mapped[str] = mapped_column(String(36), nullable=False)

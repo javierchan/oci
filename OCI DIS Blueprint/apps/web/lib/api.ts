@@ -1,6 +1,13 @@
 /* Typed fetch wrapper for the OCI DIS Blueprint frontend. */
 
 import type {
+  ApiTokenCreated,
+  ApiTokenList,
+  ApiTokenScopeList,
+  AppRole,
+  AuthSession,
+  ManagedUser,
+  ManagedUserList,
   AgentDefinition,
   AgentProviderStatus,
   AgentProviderMetrics,
@@ -105,6 +112,13 @@ import type {
   PriceSyncJob,
   PriceSyncJobList,
   Project,
+  ProjectAttentionTask,
+  ProjectAttentionTaskList,
+  ProjectAttentionTaskStatus,
+  ProjectAttentionSource,
+  ProjectSavedView,
+  ProjectSavedViewList,
+  ProjectSavedViewSurface,
   ProjectArchiveResponse,
   ProjectDeleteResponse,
   ProjectList,
@@ -168,10 +182,7 @@ function withQuery(params: CatalogParams | Record<string, string | number | unde
 }
 
 function adminHeaders(): HeadersInit {
-  return {
-    "X-Actor-Id": "web-admin",
-    "X-Actor-Role": "Admin",
-  };
+  return {};
 }
 
 function supportHeaders(sessionId: string): HeadersInit {
@@ -261,6 +272,7 @@ export function apiDownloadUrl(path: string): string {
 export async function apiDownloadBlob(path: string): Promise<{ blob: Blob; filename: string | null }> {
   const response = await fetch(`${PUBLIC_BASE}${path}`, {
     cache: "no-store",
+    credentials: "include",
     headers: adminHeaders(),
   });
   if (!response.ok) {
@@ -339,6 +351,18 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
   if (!hasFormDataBody && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
+  if (typeof window === "undefined" && !headers.has("Cookie")) {
+    try {
+      const nextHeaders = await import("next/headers");
+      const incoming = await nextHeaders.headers();
+      const cookie = incoming.get("cookie");
+      if (cookie) {
+        headers.set("Cookie", cookie);
+      }
+    } catch {
+      // Calls outside a Next request scope (for example unit tests) have no cookie to forward.
+    }
+  }
 
   let response: Response | null = null;
   let lastError: unknown = null;
@@ -347,6 +371,7 @@ async function apiFetch<T>(path: string, init?: RequestInit): Promise<T> {
       response = await fetch(`${base}${path}`, {
         ...init,
         cache: "no-store",
+        credentials: "include",
         headers,
       });
       break;
@@ -492,6 +517,84 @@ function serializePatch(body: IntegrationPatch): string {
 }
 
 export const api = {
+  login: (body: { username: string; password: string }): Promise<AuthSession> =>
+    apiFetch<AuthSession>("/api/v1/auth/login", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  getCurrentUser: (): Promise<AuthSession> =>
+    apiFetch<AuthSession>("/api/v1/auth/me"),
+
+  logout: (): Promise<void> =>
+    apiFetch<void>("/api/v1/auth/logout", { method: "POST" }),
+
+  changePassword: (body: { current_password: string; new_password: string }): Promise<void> =>
+    apiFetch<void>("/api/v1/auth/change-password", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  listApiTokens: (): Promise<ApiTokenList> =>
+    apiFetch<ApiTokenList>("/api/v1/auth/api-tokens"),
+
+  listApiTokenScopes: (): Promise<ApiTokenScopeList> =>
+    apiFetch<ApiTokenScopeList>("/api/v1/auth/api-token-scopes"),
+
+  createApiToken: (body: {
+    name: string;
+    expires_in_days: number;
+    project_ids?: string[] | null;
+    scopes: string[];
+  }): Promise<ApiTokenCreated> =>
+    apiFetch<ApiTokenCreated>("/api/v1/auth/api-tokens", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  revokeApiToken: (tokenId: string): Promise<void> =>
+    apiFetch<void>(`/api/v1/auth/api-tokens/${encodeURIComponent(tokenId)}`, {
+      method: "DELETE",
+    }),
+
+  listManagedUsers: (): Promise<ManagedUserList> =>
+    apiFetch<ManagedUserList>("/api/v1/admin/users?include_inactive=true"),
+
+  createManagedUser: (body: {
+    username: string;
+    email: string;
+    display_name: string;
+    role: AppRole;
+    password: string;
+    memberships: Array<{ project_id: string; project_role: "Contributor" | "Viewer" }>;
+  }): Promise<ManagedUser> =>
+    apiFetch<ManagedUser>("/api/v1/admin/users", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+
+  updateManagedUser: (userId: string, body: {
+    username?: string;
+    email?: string;
+    display_name?: string;
+    role?: AppRole;
+    is_active?: boolean;
+    reset_password?: string;
+  }): Promise<ManagedUser> =>
+    apiFetch<ManagedUser>(`/api/v1/admin/users/${encodeURIComponent(userId)}`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    }),
+
+  replaceManagedUserMemberships: (
+    userId: string,
+    memberships: Array<{ project_id: string; project_role: "Contributor" | "Viewer" }>,
+  ): Promise<ManagedUser> =>
+    apiFetch<ManagedUser>(`/api/v1/admin/users/${encodeURIComponent(userId)}/memberships`, {
+      method: "PUT",
+      body: JSON.stringify({ memberships }),
+    }),
+
   listAgents: (): Promise<AgentDefinition[]> =>
     apiFetch<AgentDefinition[]>("/api/v1/agents", { headers: adminHeaders() }),
 
@@ -708,7 +811,6 @@ export const api = {
   createProject: (body: {
     name: string;
     customer_name: string;
-    owner_id: string;
     description?: string;
     project_metadata?: Record<string, unknown>;
   }): Promise<Project> =>
@@ -729,9 +831,39 @@ export const api = {
   ): Promise<Project> =>
     apiFetch<Project>(`/api/v1/projects/${projectId}`, {
       method: "PATCH",
-      headers: { "X-Actor-Id": "web-user" },
       body: JSON.stringify(body),
     }),
+
+  listProjectSavedViews: (projectId: string, surface?: ProjectSavedViewSurface): Promise<ProjectSavedViewList> =>
+    apiFetch<ProjectSavedViewList>(`/api/v1/projects/${projectId}/saved-views${withQuery({ surface })}`, { headers: adminHeaders() }),
+
+  createProjectSavedView: (projectId: string, body: {
+    surface: ProjectSavedViewSurface;
+    label: string;
+    filters: Record<string, unknown>;
+    is_shared?: boolean;
+  }): Promise<ProjectSavedView> =>
+    apiFetch<ProjectSavedView>(`/api/v1/projects/${projectId}/saved-views`, {
+      method: "POST", headers: adminHeaders(), body: JSON.stringify(body),
+    }),
+
+  deleteProjectSavedView: (projectId: string, viewId: string): Promise<void> =>
+    apiFetch<void>(`/api/v1/projects/${projectId}/saved-views/${viewId}`, { method: "DELETE", headers: adminHeaders() }),
+
+  listProjectAttentionTasks: (projectId: string): Promise<ProjectAttentionTaskList> =>
+    apiFetch<ProjectAttentionTaskList>(`/api/v1/projects/${projectId}/attention-tasks`, { headers: adminHeaders() }),
+
+  createProjectAttentionTask: (projectId: string, body: {
+    attention_key: string; source: ProjectAttentionSource; title: string; evidence_href: string;
+    assignee?: string | null; due_date?: string | null; note?: string | null;
+  }): Promise<ProjectAttentionTask> =>
+    apiFetch<ProjectAttentionTask>(`/api/v1/projects/${projectId}/attention-tasks`, { method: "POST", headers: adminHeaders(), body: JSON.stringify(body) }),
+
+  updateProjectAttentionTask: (projectId: string, taskId: string, body: {
+    assignee?: string | null; due_date?: string | null; status?: ProjectAttentionTaskStatus;
+    note?: string | null; evidence?: Record<string, unknown> | null;
+  }): Promise<ProjectAttentionTask> =>
+    apiFetch<ProjectAttentionTask>(`/api/v1/projects/${projectId}/attention-tasks/${taskId}`, { method: "PATCH", headers: adminHeaders(), body: JSON.stringify(body) }),
 
   listExternalCaptureSessions: (projectId: string): Promise<ExternalCaptureSessionList> =>
     apiFetch<ExternalCaptureSessionList>(

@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, Header, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.core.auth import AuthorizedPrincipal
 from app.schemas.project import (
     ProjectArchiveResponse,
     ProjectCreateRequest,
@@ -20,20 +21,29 @@ router = APIRouter(prefix="/projects", tags=["Projects"])
 
 
 @router.get("/", response_model=ProjectListResponse, summary="List all projects")
-async def list_projects(db: AsyncSession = Depends(get_db)) -> ProjectListResponse:
+async def list_projects(
+    principal: AuthorizedPrincipal,
+    db: AsyncSession = Depends(get_db),
+) -> ProjectListResponse:
     """Return all projects ordered by creation date descending."""
 
-    return await project_service.list_projects(db)
+    return await project_service.list_projects(
+        db,
+        user_id=principal.user_id,
+        allowed_project_ids=principal.allowed_project_ids,
+        bypass_project_membership=principal.bypass_project_membership,
+    )
 
 
 @router.post("/", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED, summary="Create a project")
 async def create_project(
     body: ProjectCreateRequest,
+    principal: AuthorizedPrincipal,
     db: AsyncSession = Depends(get_db),
 ) -> ProjectResponse:
     """Create one project and return the serialized resource."""
 
-    project = await project_service.create_project(body, db)
+    project = await project_service.create_project(body, db, owner_id=principal.user_id)
     await db.commit()
     return project_service.serialize_project(project)
 

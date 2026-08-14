@@ -27,12 +27,13 @@
     "lint:web": "docker build --target lint --output type=cacheonly -f apps/web/Dockerfile ."
   },
   "overrides": {
-    "brace-expansion": "5.0.8",
-    "postcss": "8.5.18",
+    "brace-expansion": "5.0.9",
+    "js-yaml": "4.3.1",
+    "nanoid": "3.3.18",
+    "postcss": "8.5.26",
     "sharp": "0.35.3",
     "next": {
-      ".": "$next",
-      "postcss": "8.5.18",
+      "postcss": "8.5.26",
       "sharp": "0.35.3"
     }
   },

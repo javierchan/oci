@@ -10,6 +10,7 @@ from typing import Literal, cast
 from fastapi import HTTPException
 from sqlalchemy import and_, delete, func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.sql.elements import ColumnElement
 
 from app.agents.registry import AGENT_DEFINITIONS, AgentDefinition, get_agent_definition
 from app.agents.tools import build_tool_executor
@@ -26,6 +27,7 @@ from app.models import (
     CatalogIntegration,
     ExternalCaptureDraft,
     Project,
+    ProjectMembership,
     SupportMessage,
 )
 from app.schemas.agent import (
@@ -525,6 +527,8 @@ async def create_agent_run(
         if integration is None or integration.project_id != request.project_id:
             raise HTTPException(status_code=404, detail={"detail": "Integration not found", "error_code": "INTEGRATION_NOT_FOUND"})
     context = cast(dict[str, object], sanitize_for_json(request.context))
+    if definition.type == "support_assistant":
+        context["authorized_user_id"] = actor_id
     context["include_provider"] = request.include_provider
     if request.message:
         context["message"] = request.message
@@ -568,15 +572,34 @@ async def link_agent_run(
 async def list_agent_runs(
     db: AsyncSession,
     *,
+    actor_id: str,
     actor_role: str,
     project_id: str | None = None,
+    allowed_project_ids: frozenset[str] | None = None,
+    bypass_project_membership: bool = False,
     limit: int = 20,
 ) -> AgentRunListResponse:
     """Return recent runs visible to the caller role."""
 
     visible_types = [item.type for item in list_agent_definitions(actor_role)]
     query = select(AgentRun).where(AgentRun.agent_type.in_(visible_types))
-    count_query = select(func.count()).select_from(AgentRun).where(AgentRun.agent_type.in_(visible_types))
+    count_query = select(func.count()).select_from(AgentRun).where(
+        AgentRun.agent_type.in_(visible_types)
+    )
+    if not bypass_project_membership:
+        membership_projects = select(ProjectMembership.project_id).where(
+            ProjectMembership.user_id == actor_id
+        )
+        if allowed_project_ids is not None:
+            membership_projects = membership_projects.where(
+                ProjectMembership.project_id.in_(allowed_project_ids)
+            )
+        global_visibility: ColumnElement[bool] = AgentRun.project_id.is_(None)
+        if normalize_role(actor_role) != "Admin":
+            global_visibility = and_(global_visibility, AgentRun.requested_by == actor_id)
+        visibility = or_(AgentRun.project_id.in_(membership_projects), global_visibility)
+        query = query.where(visibility)
+        count_query = count_query.where(visibility)
     if project_id is not None:
         query = query.where(AgentRun.project_id == project_id)
         count_query = count_query.where(AgentRun.project_id == project_id)

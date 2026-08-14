@@ -18,12 +18,13 @@ services assemble verified facts, executable App routes, and validation boundari
 
 ## Session Isolation
 
-The current product has no external identity provider. The browser creates one
-opaque UUID in local storage and sends it as `X-Support-Session-Id`. PostgreSQL
-conversations are readable only when both conversation ID and session UUID match;
-unauthorized lookups return 404. This is an explicit transitional identity
-boundary, not a substitute for authentication. A future IdP must bind the same
-conversation contract to its authenticated subject.
+The browser is authenticated through an opaque database session and every
+assistant conversation is bound to that authenticated App user plus an opaque
+browser UUID sent as `X-Support-Session-Id`. PostgreSQL conversations are
+readable only when user, conversation ID, and browser UUID match; unauthorized
+lookups return `404`. The UUID separates concurrent browser contexts but is not
+itself a credential. Future OCI IAM sign-in will resolve to the same App user,
+so conversation and project authorization do not change with the provider.
 
 ## Context Contract
 

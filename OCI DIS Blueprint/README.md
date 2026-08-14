@@ -70,12 +70,55 @@ docker compose exec -T api alembic upgrade head
 
 # 5. Seed reference data (patterns, dictionary, assumptions)
 docker compose exec -T api python -m app.migrations.seed
+
+# 6. Bootstrap the first local administrator and capture its one-time password
+mkdir -p .local/onboarding && chmod 700 .local/onboarding
+docker compose run --rm --no-deps \
+  --user "$(id -u):$(id -g)" \
+  --volume "$PWD/.local/onboarding:/bootstrap-output" \
+  api python scripts/bootstrap_installation.py \
+  --username admin \
+  --email admin@example.com \
+  --display-name "Local Administrator" \
+  --generate-password \
+  --output-file /bootstrap-output/initial-access.json
 ```
 
 **Access:**
 - Web app: http://localhost:3000
 - API docs: http://localhost:8000/docs
 - MinIO console: http://localhost:9001 (minio / minio123)
+
+## Authentication and external API access
+
+Local username/password authentication is stored in PostgreSQL. Passwords use
+Argon2id hashes; browser sessions and API token secrets are stored only as
+digests. There is no public self-registration. The first-install bootstrap is
+idempotent, creates exactly one Admin, and fails closed if another user already
+exists. Afterwards, Admins use **User Management** to create users, edit local
+usernames, assign App roles, activate/deactivate accounts, and grant project
+memberships. `scripts/manage_local_user.py` remains the operator recovery path.
+
+The account menu is located on the initials in the upper-right corner. Its
+**Account security** page can create expiring, revocable API tokens for Codex or
+another external client. Tokens are strictly read-only, inherit the user's live
+project memberships, and can be narrowed independently by selected projects and
+governed capabilities such as projects, integrations, architecture, commercial,
+governance, audit, exports, or agents:
+
+```bash
+curl -H "Authorization: Bearer $OCI_DIS_API_TOKEN" \
+  http://localhost:8000/api/v1/projects/
+```
+
+The raw token is shown once. Do not place it in Git, application logs, URLs, or
+browser storage. OCI IAM Identity Domains is a future **additional** identity
+provider over the same App user, roles, memberships, and audit model; it will
+not remove local authentication.
+
+The complete new-host and future OCI Job sequence, credential-output rules, and
+acceptance checks are in
+[`docs/operations/installation-onboarding.md`](./docs/operations/installation-onboarding.md).
 
 ## OCI Generative AI for Governed Reviews
 

@@ -2,10 +2,7 @@ import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Script from "next/script";
 
-import { Nav } from "@/components/nav";
-import { ToastStack } from "@/components/toast";
-import { ContextualSupportAssistant } from "@/components/contextual-support-assistant";
-import { WorkspaceTopBar } from "@/components/workspace-topbar";
+import { WorkspaceShell } from "@/components/workspace-shell";
 import { APP_DESCRIPTION, APP_ICON_PATH, APP_NAME } from "@/lib/app-brand";
 
 import "./globals.css";
@@ -51,6 +48,7 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
                   var theme = localStorage.getItem('oci-dis-theme');
                   var prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
                   root.classList.toggle('dark', theme === 'dark' || (theme !== 'light' && prefersDark));
+                  root.dataset.experienceMode = localStorage.getItem('oci-dis-experience-mode') === 'guided' ? 'guided' : 'expert';
                 } catch (error) {}
               })();
             `,
@@ -58,15 +56,7 @@ export default function RootLayout({ children }: RootLayoutProps): JSX.Element {
         />
       </head>
       <body className="antialiased">
-        <div className="min-h-screen lg:flex">
-          <Nav />
-          <div className="min-h-screen min-w-0 flex-1 bg-[var(--color-page-bg)]">
-            <WorkspaceTopBar />
-            <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-7 lg:py-6">{children}</main>
-          </div>
-        </div>
-        <ToastStack />
-        <ContextualSupportAssistant />
+        <WorkspaceShell>{children}</WorkspaceShell>
       </body>
     </html>
   );

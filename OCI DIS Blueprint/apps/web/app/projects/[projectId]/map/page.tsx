@@ -3,8 +3,8 @@
 /* Interactive system dependency map page backed by the catalog graph endpoint. */
 
 import { use, useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { RefreshCw } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { BookmarkPlus, Check, RefreshCw, Share2 } from "lucide-react";
 
 import { GraphControls } from "@/components/graph-controls";
 import { GraphDetailPanel } from "@/components/graph-detail-panel";
@@ -140,6 +140,11 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   const [pulseIntegrationId, setPulseIntegrationId] = useState<string>("");
   const [widePanel, setWidePanel] = useState<boolean>(false);
   const [desktopMap, setDesktopMap] = useState<boolean>(false);
+  const [shareCopied, setShareCopied] = useState<boolean>(false);
+  const [viewSaved, setViewSaved] = useState<boolean>(false);
+  const initialPathFocusProjectRef = useRef<string | null>(null);
+  const searchParams = useSearchParams();
+  const pathname = usePathname();
   const missingProjectHref = projectRootHref(projectId);
   const qaTotals = useMemo(() => qaTotalsForEdges(graph.edges), [graph.edges]);
   const degradedSystems = useMemo(() => degradedSystemCount(graph.nodes, graph.edges), [graph.edges, graph.nodes]);
@@ -237,11 +242,27 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
       .getGraph(projectId, filters)
       .then((response) => {
         if (!cancelled) {
-          setGraph(normalizeGraphResponse(response));
+          const normalized = normalizeGraphResponse(response);
+          setGraph(normalized);
           setSelectedNode(null);
-          setSelectedEdge(null);
           setPulseIntegrationId("");
-          setPulseHighlightedEdgeIds([]);
+          const rankedRiskEdges = normalized.edges
+            .filter((edge) => edge.risk_qa_status !== "OK")
+            .toSorted((left, right) => right.risk_score - left.risk_score)
+            .slice(0, 3);
+          const requestedPathId = searchParams.get("path");
+          const requestedPath = requestedPathId
+            ? normalized.edges.find((edge) => edge.id === requestedPathId) ?? null
+            : null;
+          const shouldInitialize = initialPathFocusProjectRef.current !== projectId;
+          if (shouldInitialize || requestedPath) {
+            initialPathFocusProjectRef.current = projectId;
+            setSelectedEdge(requestedPath ?? rankedRiskEdges[0] ?? null);
+            setPulseHighlightedEdgeIds(rankedRiskEdges.map((edge) => edge.id));
+          } else {
+            setSelectedEdge(null);
+            setPulseHighlightedEdgeIds([]);
+          }
         }
       })
       .catch((caughtError: unknown) => {
@@ -263,7 +284,20 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
     return () => {
       cancelled = true;
     };
-  }, [filters, missingProjectHref, projectId, router]);
+  }, [filters, missingProjectHref, projectId, router, searchParams]);
+
+  useEffect(() => {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value) params.set(key, value);
+    });
+    if (selectedSystem) params.set("system", selectedSystem);
+    if (selectedEdge) params.set("path", selectedEdge.id);
+    const next = params.toString();
+    if (next !== searchParams.toString()) {
+      router.replace(`${pathname}${next ? `?${next}` : ""}`);
+    }
+  }, [filters, pathname, router, searchParams, selectedEdge, selectedSystem]);
 
   useEffect(() => {
     function handleKeyDown(event: KeyboardEvent): void {
@@ -337,6 +371,31 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
     const edge = graph.edges.find((candidate) => candidate.id === edgeId);
     if (edge) {
       selectEdge(edge);
+    }
+  }
+
+  async function shareMapView(): Promise<void> {
+    try {
+      await navigator.clipboard.writeText(window.location.href);
+      setShareCopied(true);
+      window.setTimeout(() => setShareCopied(false), 1800);
+    } catch {
+      window.prompt("Copy this governed topology view", window.location.href);
+    }
+  }
+
+  async function saveMapView(): Promise<void> {
+    const label = window.prompt("Name this shared topology view", "Topology view")?.trim();
+    if (!label) return;
+    try {
+      await api.createProjectSavedView(projectId, {
+        surface: "topology", label, is_shared: true,
+        filters: { query: window.location.search, selected_system: selectedSystem, metric_mode: metricMode, visibility_mode: visibilityMode, layout_mode: layoutMode, color_mode: colorMode },
+      });
+      setViewSaved(true);
+      window.setTimeout(() => setViewSaved(false), 1800);
+    } catch (caughtError) {
+      setError(getErrorMessage(caughtError, "Unable to save the shared topology view."));
     }
   }
 
@@ -418,6 +477,17 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
               svgRef={svgRef}
               compact={widePanel && Boolean(selectedPanelNode || selectedEdge || triageOpen)}
             />
+
+            <div className="absolute right-3 top-[5.75rem] z-30 flex gap-2">
+              <button type="button" onClick={() => void saveMapView()} className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs" title="Save the current topology focus as a shared, audited project view">
+                {viewSaved ? <Check className="h-3.5 w-3.5" /> : <BookmarkPlus className="h-3.5 w-3.5" />}
+                {viewSaved ? "Saved" : "Save view"}
+              </button>
+              <button type="button" onClick={() => void shareMapView()} className="app-button-secondary gap-1.5 px-3 py-1.5 text-xs" title="Copy a URL with the current topology focus and filters">
+                {shareCopied ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
+                {shareCopied ? "Copied" : "Share view"}
+              </button>
+            </div>
 
             <div className="relative min-h-0 flex-1">
               {!loading && graph.meta.integration_count > 0 ? (

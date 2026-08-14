@@ -14,7 +14,7 @@
 | --- | --- | --- | --- |
 | Runtime | Eight production-mode Docker Compose services on one Docker host | OKE Deployments and governed Jobs | Helm/Terraform render, rollout, rollback, and smoke evidence |
 | Web and API scale | Stateless by intent; API has four local Uvicorn workers | At least two replicas with HPA and disruption budgets | Replica-loss and rolling-deploy tests |
-| Identity | Caller-provided `X-Actor-*` headers; support UUID isolation | OCI IAM OIDC/JWT subject and token-derived roles | Forged headers rejected; cross-user access tests |
+| Identity | Local Argon2id credentials, opaque DB sessions, App users, Admin User Management, project memberships, granular read-only API tokens, and idempotent first-Admin bootstrap | Add OCI IAM OIDC/JWT as another identity provider for the same App users and execute bootstrap as one release Job | Local bootstrap, cross-user isolation, forged-header, user-management, and token-scope tests pass; OCI issuer/subject linking and Job packaging remain |
 | Database | PostgreSQL 16 container; per-process pool 10 + 20 overflow | Managed PostgreSQL and an explicit global connection budget | Load test stays below configured connection ceiling |
 | Broker/cache | Redis 7 container | OCI Cache with TLS and recovery policy | Broker interruption and reconnect tests |
 | Artifacts | MinIO through S3-compatible adapter | OCI Object Storage with workload identity | Versioning, retention, access, and failure tests |
@@ -38,7 +38,7 @@
 flowchart LR
     User["Authenticated user"]
     Edge["OCI WAF and Load Balancer"]
-    IAM["OCI IAM identity"]
+    IAM["Local or OCI IAM identity"]
     Web["OKE web replicas"]
     API["OKE API replicas"]
     Data["Managed PostgreSQL and OCI Cache"]
@@ -80,8 +80,11 @@ flowchart LR
 
 ### Gate 1 — identity and trust
 
-- Implement OIDC/JWT validation and subject-to-role mapping.
-- Reject externally supplied actor identity and role headers.
+- Preserve the implemented local/session/API-token boundary.
+- Run one migration Job, one reference-seed Job, and one idempotent first-Admin
+  bootstrap Job before application workload rollout.
+- Add OIDC/JWT validation and subject-to-role mapping as another provider.
+- Keep rejecting externally supplied actor identity and role headers.
 - Bind App Assistant conversations to the authenticated subject while
   preserving opaque conversation identifiers.
 - Validate project, commercial, agent, and admin authorization at the service

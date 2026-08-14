@@ -26,6 +26,9 @@ from app.models import (
     ImportMappingProfile,
     JustificationRecord,
     Project,
+    ProjectMembership,
+    ProjectAttentionTask,
+    ProjectSavedView,
     SourceIntegrationRow,
     SupportMessage,
     SyntheticGenerationJob,
@@ -67,20 +70,42 @@ def serialize_project(project: Project) -> ProjectResponse:
     )
 
 
-async def list_projects(db: AsyncSession) -> ProjectListResponse:
-    """List all projects ordered by creation time."""
+async def list_projects(
+    db: AsyncSession,
+    *,
+    user_id: str,
+    allowed_project_ids: frozenset[str] | None = None,
+    bypass_project_membership: bool = False,
+) -> ProjectListResponse:
+    """List only projects for which the authenticated user has membership."""
 
-    result = await db.scalars(select(Project).order_by(Project.created_at.desc()))
+    if bypass_project_membership:
+        query = select(Project).order_by(Project.created_at.desc())
+    else:
+        query = (
+            select(Project)
+            .join(ProjectMembership, ProjectMembership.project_id == Project.id)
+            .where(ProjectMembership.user_id == user_id)
+            .order_by(Project.created_at.desc())
+        )
+    if allowed_project_ids is not None:
+        query = query.where(Project.id.in_(allowed_project_ids))
+    result = await db.scalars(query)
     return ProjectListResponse(projects=[serialize_project(project) for project in result.all()])
 
 
-async def create_project(body: ProjectCreateRequest, db: AsyncSession) -> Project:
-    """Create and flush a new project."""
+async def create_project(
+    body: ProjectCreateRequest,
+    db: AsyncSession,
+    *,
+    owner_id: str,
+) -> Project:
+    """Create a project and its required owner membership atomically."""
 
     project = Project(
         name=body.name,
         customer_name=body.customer_name,
-        owner_id=body.owner_id,
+        owner_id=owner_id,
         description=body.description,
         project_metadata=body.project_metadata,
         # A project created from the product workspace is immediately editable.
@@ -88,6 +113,15 @@ async def create_project(body: ProjectCreateRequest, db: AsyncSession) -> Projec
         status=ProjectStatus.ACTIVE,
     )
     db.add(project)
+    await db.flush()
+    db.add(
+        ProjectMembership(
+            project_id=project.id,
+            user_id=owner_id,
+            project_role="Owner",
+            granted_by=owner_id,
+        )
+    )
     await db.flush()
     await db.refresh(project)
     return project
@@ -243,6 +277,8 @@ async def delete_project(project_id: str, actor_id: str, db: AsyncSession) -> Pr
     await db.execute(delete(AiReviewJob).where(AiReviewJob.project_id == project_id))
     await db.execute(delete(AiReviewBaseline).where(AiReviewBaseline.project_id == project_id))
     await db.execute(delete(ImportMappingProfile).where(ImportMappingProfile.project_id == project_id))
+    await db.execute(delete(ProjectAttentionTask).where(ProjectAttentionTask.project_id == project_id))
+    await db.execute(delete(ProjectSavedView).where(ProjectSavedView.project_id == project_id))
     external_session_ids = select(ExternalCaptureSession.id).where(
         ExternalCaptureSession.project_id == project_id
     )

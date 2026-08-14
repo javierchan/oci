@@ -12,6 +12,7 @@ Catalogo_Integracion.xlsx
 .env.local
 .env.*.local
 *.env
+.local/onboarding/
 
 # Python
 .venv/

@@ -6,13 +6,14 @@ from fastapi import APIRouter, Depends, Header, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.db import get_db
+from app.core.auth import AuthorizedPrincipal
 from app.schemas.agent import (
     AgentCreateRequest,
     SupportContextKey,
     SupportConversationResponse,
     SupportMessageCreateRequest,
 )
-from app.services import agent_service, support_service
+from app.services import agent_service, auth_service, support_service
 from app.services.authz import require_roles
 from app.workers.agent_worker import execute_agent_run_task
 
@@ -47,8 +48,10 @@ async def get_or_create_support_conversation(
 )
 async def get_support_conversation(
     conversation_id: str,
+    principal: AuthorizedPrincipal,
     db: AsyncSession = Depends(get_db),
     session_id: str = Header(..., alias="X-Support-Session-Id"),
+    actor_id: str = Header("web-user", alias="X-Actor-Id"),
     actor_role: str = Header("Viewer", alias="X-Actor-Role"),
 ) -> SupportConversationResponse:
     require_roles(
@@ -56,7 +59,12 @@ async def get_support_conversation(
         {"Admin", "Architect", "Analyst", "Viewer"},
         error_code="SUPPORT_ROLE_REQUIRED",
     )
-    return await support_service.get_conversation(conversation_id, session_id, db)
+    return await support_service.get_conversation(
+        conversation_id,
+        session_id,
+        actor_id,
+        db,
+    )
 
 
 @router.delete(
@@ -115,6 +123,7 @@ async def remove_support_conversation_context(
 async def create_support_message(
     conversation_id: str,
     body: SupportMessageCreateRequest,
+    principal: AuthorizedPrincipal,
     db: AsyncSession = Depends(get_db),
     session_id: str = Header(..., alias="X-Support-Session-Id"),
     actor_id: str = Header("web-user", alias="X-Actor-Id"),
@@ -126,8 +135,10 @@ async def create_support_message(
         error_code="SUPPORT_ROLE_REQUIRED",
     )
     async with db.begin():
+        if body.project_id and not principal.bypass_project_membership:
+            await auth_service.require_project_access(principal, body.project_id, db)
         _, assistant_message, context = await support_service.prepare_support_turn(
-            conversation_id, session_id, body, db
+            conversation_id, session_id, actor_id, body, db
         )
         run = await agent_service.create_agent_run(
             AgentCreateRequest(
@@ -143,7 +154,12 @@ async def create_support_message(
             db,
         )
         await support_service.link_support_run(assistant_message.id, run.id, db)
-        conversation = await support_service.get_conversation(conversation_id, session_id, db)
+        conversation = await support_service.get_conversation(
+            conversation_id,
+            session_id,
+            actor_id,
+            db,
+        )
     try:
         execute_agent_run_task.apply_async(args=[run.id], task_id=run.id, queue="agents")
     except Exception as exc:  # pragma: no cover - defensive dispatch path.

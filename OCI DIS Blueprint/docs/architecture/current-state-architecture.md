@@ -1,8 +1,8 @@
 # Current-State Architecture
 
-**Baseline:** commit `cc741ea118fe`
+**Baseline:** working tree through migration `20260814_0057`
 
-**Observed:** 2026-07-26
+**Observed:** 2026-08-14
 
 **Scope:** repository and production-mode Docker Compose runtime
 
@@ -19,7 +19,7 @@ S3-compatible service owns durable artifacts.
 
 The current eight-service Docker Compose stack is a valid production-mode local
 runtime. It is not yet a horizontally scalable OCI production platform. The
-container boundaries are reusable for OKE, but identity, shared App Knowledge,
+container boundaries are reusable for OKE, but OCI IAM integration, shared App Knowledge,
 safe probes, queue recovery, singleton scheduling, database connection budgets,
 and OCI-native observability remain M77 prerequisites.
 
@@ -276,24 +276,39 @@ unconfigured test environments; they are not a production answer fallback.
 ```mermaid
 flowchart LR
     Browser["Browser<br/>untrusted client"]
-    Headers["X-Actor-Id and X-Actor-Role<br/>caller-controlled today"]
-    API["API role checks"]
-    Session["Opaque support session UUID"]
+    Bootstrap["One-shot Admin bootstrap"]
+    Local["Local Argon2id identity"]
+    Cookie["Opaque HttpOnly session"]
+    Token["Read-only API token"]
+    Auth["Authenticated App principal"]
+    Membership["Project membership boundary"]
+    Session["Assistant browser-context UUID"]
     DB[("Governed database")]
     OCI["OCI APIs<br/>secret-file credential"]
 
-    Browser --> Headers --> API --> DB
-    Browser --> Session --> API
-    API --> OCI
+    Bootstrap --> Local
+    Browser --> Local --> Cookie --> Auth
+    Token --> Auth
+    Auth --> Membership --> DB
+    Browser --> Session --> Auth
+    Auth --> OCI
 ```
 
-This is the most important current production gap. Service-layer role checks are
-implemented, but the identity and role values originate in client headers.
-Support conversations add opaque browser-session isolation, which prevents
-accidental cross-session reads but is explicitly not authentication. An ingress
-or API deployment must not trust these headers until an OCI IAM identity
-boundary verifies a token, derives actor and roles, and rejects externally
-supplied identity headers.
+The installation bootstrap creates exactly one first local Admin and becomes a
+no-op on an identical retry; it fails closed when an unexpected user already
+exists. The API authenticates an opaque browser session or a bearer API token and then
+derives actor identity and role server-side. Legacy actor headers are overwritten
+from that principal before existing role checks execute. Project-scoped reads and
+writes require a live membership; unauthorized project IDs return `404`. API
+tokens are read-only, expiring and revocable, inherit current memberships, and
+may narrow—but never expand—the project set or governed evidence capabilities.
+Admins manage usernames, App roles, activation, and memberships through User
+Management. The assistant UUID separates
+browser contexts in addition to the authenticated user boundary.
+
+OCI IAM Identity Domains is not implemented yet. It will be added as another
+verified identity for the same App user, leaving local authentication, roles,
+memberships, project ownership, and audit intact.
 
 Other current trust controls include:
 
@@ -333,10 +348,9 @@ or restart decisions.
 | Evidence | Observed result |
 | --- | --- |
 | Docker runtime | Eight expected Compose services running; API, PostgreSQL, Redis, and MinIO healthy |
-| Migration state | Current and head at `20260724_0055` |
-| API contract | Runtime and committed OpenAPI SHA-256 identical; 156 paths, 184 operations, 291 schemas |
-| Database | 65 application tables |
-| API tests | 328 passed |
+| Migration state | Current and head at `20260814_0057` |
+| Authentication | Local login, forged-header rejection, cross-user `404`, and scoped read-only token lifecycle pass |
+| Browser authentication QA | Login, Account, project visibility, token create/revoke, and zero console warnings/errors pass |
 | Calculation engine | 99 passed |
 | Pricing engine | 35 passed |
 | Frontend tests | 135 passed across 23 files |
@@ -344,16 +358,15 @@ or restart decisions.
 | Production build | Next.js production build passed |
 | App Knowledge | Deterministic drift check passed; source hash prefix `02796f3a3d72` |
 
-Browser E2E was not rerun against the active retained data stack during this
-audit because those tests exercise destructive cleanup paths. The canonical CI
-contract and the last repository validation record cover that gate, but a new
-isolated release environment must execute it before an OCI release.
+Focused non-destructive browser authentication QA was rerun against the retained
+data stack. Destructive canonical browser cleanup flows still require an isolated
+release environment before an OCI release.
 
 ## 12. Current limitations
 
 The following are explicitly **not implemented production claims**:
 
-1. OCI IAM authentication and token-derived roles.
+1. OCI IAM as an additional verified identity provider and token-derived group mapping.
 2. OKE manifests, Helm releases, Terraform modules, or OCI provisioned runtime.
 3. Shared atomic App Knowledge publication across replicas.
 4. Read-only comprehensive Kubernetes readiness.

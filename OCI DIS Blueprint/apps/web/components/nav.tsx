@@ -27,6 +27,8 @@ import {
 } from "lucide-react";
 
 import { ThemeToggle } from "@/components/theme-toggle";
+import { AccountControl } from "@/components/account-control";
+import { ExperienceModeToggle } from "@/components/experience-mode-toggle";
 import { APP_ICON_PATH, APP_NAME, APP_TAGLINE } from "@/lib/app-brand";
 import { APP_VERSION } from "@/lib/app-version";
 import { api } from "@/lib/api";
@@ -308,7 +310,9 @@ function NavPanel({
           mobile ? "mt-6" : "mt-auto"
         }`}
       >
+        {mobile ? <AccountControl onNavigate={onNavigate} /> : null}
         <ThemeToggle />
+        <ExperienceModeToggle />
         <div className="mt-3 border-t border-[var(--color-border)] pt-3">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
             Context

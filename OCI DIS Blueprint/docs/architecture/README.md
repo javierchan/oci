@@ -33,6 +33,8 @@ mistake a Docker-local capability for an OCI production capability.
 
 | Domain | Primary document | Status |
 | --- | --- | --- |
+| Installation onboarding | [First Admin and secret handoff](../operations/installation-onboarding.md) | Implemented locally; OCI Job packaging planned |
+| Authentication and API tokens | [ADR-003](../adr/ADR-003-provider-neutral-local-authentication.md) | Implemented locally; OCI IAM additional provider planned |
 | App knowledge and embeddings | [Governed App Knowledge Base](./app-knowledge-base.md) | Implemented locally; shared publication planned |
 | Contextual assistant | [Contextual Support Assistant](./contextual-support-assistant.md) | Implemented locally |
 | Governed agents | [OCI Agent Runtime](./oci-agent-runtime.md) | Implemented locally |

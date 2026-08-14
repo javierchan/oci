@@ -30,6 +30,7 @@ from app.models import (
     PriceItem,
     ProductCoverageCandidate,
     Project,
+    ProjectMembership,
     ServiceCapabilityProfile,
     ServiceCommercialPolicy,
     ServiceProductSkuMapping,
@@ -577,6 +578,7 @@ async def _conversation_for_session(
     conversation = await db.scalar(
         select(SupportConversation).where(
             SupportConversation.session_id == session_id,
+            SupportConversation.actor_id == actor_id,
             SupportConversation.status == "active",
         )
     )
@@ -681,13 +683,18 @@ async def get_or_create_conversation(
 async def get_conversation(
     conversation_id: str,
     session_id: str,
+    actor_id: str,
     db: AsyncSession,
 ) -> SupportConversationResponse:
     """Read a conversation only when both ID and opaque session match."""
 
     normalized_session = validate_support_session_id(session_id)
     conversation = await db.get(SupportConversation, conversation_id)
-    if conversation is None or conversation.session_id != normalized_session:
+    if (
+        conversation is None
+        or conversation.session_id != normalized_session
+        or conversation.actor_id != actor_id
+    ):
         raise HTTPException(
             status_code=404,
             detail={"detail": "Support conversation not found", "error_code": "SUPPORT_CONVERSATION_NOT_FOUND"},
@@ -705,7 +712,12 @@ async def clear_conversation_history(
 
     normalized_session = validate_support_session_id(session_id)
     conversation = await db.get(SupportConversation, conversation_id)
-    if conversation is None or conversation.session_id != normalized_session or conversation.status != "active":
+    if (
+        conversation is None
+        or conversation.session_id != normalized_session
+        or conversation.actor_id != actor_id
+        or conversation.status != "active"
+    ):
         raise HTTPException(
             status_code=404,
             detail={"detail": "Support conversation not found", "error_code": "SUPPORT_CONVERSATION_NOT_FOUND"},
@@ -778,7 +790,12 @@ async def remove_conversation_context(
 
     normalized_session = validate_support_session_id(session_id)
     conversation = await db.get(SupportConversation, conversation_id)
-    if conversation is None or conversation.session_id != normalized_session or conversation.status != "active":
+    if (
+        conversation is None
+        or conversation.session_id != normalized_session
+        or conversation.actor_id != actor_id
+        or conversation.status != "active"
+    ):
         raise HTTPException(
             status_code=404,
             detail={"detail": "Support conversation not found", "error_code": "SUPPORT_CONVERSATION_NOT_FOUND"},
@@ -824,6 +841,7 @@ async def remove_conversation_context(
 async def prepare_support_turn(
     conversation_id: str,
     session_id: str,
+    actor_id: str,
     body: SupportMessageCreateRequest,
     db: AsyncSession,
 ) -> tuple[SupportMessage, SupportMessage, dict[str, object]]:
@@ -831,7 +849,12 @@ async def prepare_support_turn(
 
     normalized_session = validate_support_session_id(session_id)
     conversation = await db.get(SupportConversation, conversation_id)
-    if conversation is None or conversation.session_id != normalized_session or conversation.status != "active":
+    if (
+        conversation is None
+        or conversation.session_id != normalized_session
+        or conversation.actor_id != actor_id
+        or conversation.status != "active"
+    ):
         raise HTTPException(
             status_code=404,
             detail={"detail": "Support conversation not found", "error_code": "SUPPORT_CONVERSATION_NOT_FOUND"},
@@ -924,6 +947,7 @@ async def prepare_support_turn(
         "attachments": [item.model_dump(mode="json") for item in body.attachments],
         "transcript": [{"role": item.role, "content": item.content[:1200]} for item in previous],
         "conversation_state": conversation_state,
+        "authorized_user_id": conversation.actor_id,
     }
     return user_message, assistant_message, agent_context
 
@@ -1013,10 +1037,17 @@ async def build_support_evidence(
 
     route = str(context.get("route") or "/projects")
     citations: list[dict[str, str]] = [{"label": "Current context", "href": route}]
+    authorized_user_id = context.get("authorized_user_id")
+    project_query = select(Project)
+    if isinstance(authorized_user_id, str) and authorized_user_id:
+        project_query = project_query.join(
+            ProjectMembership,
+            ProjectMembership.project_id == Project.id,
+        ).where(ProjectMembership.user_id == authorized_user_id)
     projects = list(
         (
             await db.scalars(
-                select(Project).order_by(Project.updated_at.desc()).limit(50)
+                project_query.order_by(Project.updated_at.desc()).limit(50)
             )
         ).all()
     )

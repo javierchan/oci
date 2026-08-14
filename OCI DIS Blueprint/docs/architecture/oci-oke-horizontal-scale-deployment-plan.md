@@ -53,7 +53,7 @@ No OCI resource creation, update, or deletion is authorized by this plan.
 | Object artifacts | One S3-compatible service owns imports, exports, rate cards, and reports | Point the adapter at OCI Object Storage; never deploy MinIO |
 | App knowledge | Packaged vectors plus a runtime file under `/tmp` | Blocking: publish one shared immutable active artifact |
 | Schedules | Celery Beat writes its schedule under `/tmp` | Run exactly one scheduler or replace schedules with CronJobs |
-| Identity | API trusts actor and role headers supplied by callers | Blocking: validate OCI IAM Identity Domains tokens |
+| Identity | Local Argon2id accounts, opaque DB sessions, memberships, and read-only API tokens; caller identity headers are overwritten | Add OCI IAM Identity Domains as another verified provider before enterprise production |
 | Health | Liveness and partial readiness endpoints exist | Make readiness read-only and add Redis/knowledge checks |
 | Observability | OCI provider counters exist; general metrics, traces, and alarms do not | Blocking for production operations |
 | Delivery | Images are built and scanned | Add OCIR publication, signing, IaC, Helm, promotion, and rollback |
@@ -140,9 +140,9 @@ flowchart LR
 - Use the OKE Cluster Autoscaler on managed node pools after pod requests and
   limits are measured.
 
-The current application does not require sticky sessions. The opaque browser
-session identifier remains client-side, while conversations and messages are in
-PostgreSQL.
+The current application does not require sticky sessions. Authentication
+sessions, conversations, and messages are in PostgreSQL; only opaque session
+cookies and assistant browser-context identifiers remain client-side.
 
 ### Workload topology
 
@@ -155,6 +155,7 @@ PostgreSQL.
 | Scheduled triggers | One effective owner | Kubernetes CronJobs | Dispatch tasks; do not perform long work inline |
 | Alembic migration | One Job per release | Never parallel | Must finish before application rollout |
 | Reference seed | Explicit Job | Idempotent, separately authorized | Never run from every pod startup |
+| Identity bootstrap | One Job on first install | Idempotent and fail-closed | Creates only the first Admin from a mounted secret; never runs per replica |
 
 ### Managed data services
 
@@ -179,18 +180,23 @@ PostgreSQL.
 - Never place secrets in Helm values, ConfigMaps, image layers, `.env`, logs, or
   Terraform state payloads.
 - Use separate Kubernetes ServiceAccounts and least-privilege IAM policies for
-  web, API, deterministic worker, agent worker, migrations, and scheduled jobs.
+  web, API, deterministic worker, agent worker, migrations, identity bootstrap,
+  and scheduled jobs.
+- Generate the initial local Admin password through the approved release secret
+  workflow, store it in OCI Vault, and mount it only into the one-shot bootstrap
+  Job. Do not expose it through Terraform state, Helm values, Job arguments, or logs.
 
 ## Required Application Changes
 
 ### P0 - Production blockers
 
-1. Replace caller-controlled role headers with authenticated identity:
+1. Extend the implemented provider-neutral authentication boundary with OCI IAM:
    - register the application in OCI IAM Identity Domains;
    - implement OIDC login;
    - validate JWT signature, issuer, audience, expiry, and scopes;
-   - derive actor ID and App role server-side;
-   - reject externally supplied identity headers at the trusted boundary.
+   - link the verified issuer/subject to an existing or governed new App user;
+   - derive actor ID and App role server-side while preserving local sign-in;
+   - keep rejecting externally supplied identity headers at the trusted boundary.
 2. Make App knowledge a shared versioned artifact:
    - write immutable manifests to Object Storage;
    - store active version, source hash, model, dimensions, and object reference in

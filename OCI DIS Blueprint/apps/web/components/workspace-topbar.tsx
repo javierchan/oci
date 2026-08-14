@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 
 import { AiReviewButton } from "@/components/ai-review-button";
+import { UserMenu } from "@/components/user-menu";
 import { APP_VERSION } from "@/lib/app-version";
 import { api } from "@/lib/api";
 import { OPEN_COMMAND_PALETTE_EVENT } from "@/lib/command-palette";
@@ -359,9 +360,7 @@ export function WorkspaceTopBar(): JSX.Element {
               <Command className="h-4 w-4" />
             </button>
             <span className="console-pill">v{APP_VERSION}</span>
-            <span className="flex h-8 w-8 items-center justify-center rounded-full bg-[var(--color-text-primary)] text-[11px] font-bold text-[var(--color-surface)]">
-              JC
-            </span>
+            <UserMenu />
           </div>
         </div>
       </header>
