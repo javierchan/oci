@@ -93,6 +93,8 @@ test("opens system and dependency-path reviews with their selected graph context
   await page.getByRole("button", { name: "Close AI review" }).click();
   await page.getByRole("button", { name: "Close topology detail panel" }).click();
 
+  const displayDisclosure = page.locator("main details > summary").filter({ hasText: /^Display$/ });
+  await displayDisclosure.click();
   await page.getByRole("button", { name: "All paths", exact: true }).click();
   await page.getByRole("button", { name: `${edge.source} to ${edge.target}`, exact: false }).focus();
   await page.keyboard.press("Enter");

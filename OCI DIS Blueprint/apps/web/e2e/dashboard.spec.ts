@@ -84,7 +84,7 @@ test("resolves captured architecture components and standardizes Dashboard actio
   await expect(reviewBoard.getByText("governed deterministic evidence", { exact: false })).toBeVisible();
   await page.getByRole("button", { name: "Close AI review" }).click();
 
-  await page.getByRole("complementary").getByRole("button", { name: "Open command palette" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Open command palette" }).click();
   const commandPalette = page.getByRole("dialog", { name: "Command palette" });
   await expect(commandPalette).toBeVisible();
   const commandSearch = commandPalette.getByPlaceholder("Type a command, route, or workflow...");
@@ -119,7 +119,7 @@ test("launches a real project review from the workspace command palette", async 
 
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/projects");
-  await page.getByRole("complementary").getByRole("button", { name: "Open command palette" }).click();
+  await page.getByRole("banner").getByRole("button", { name: "Open command palette" }).click();
   const commandPalette = page.getByRole("dialog", { name: "Command palette" });
   const commandSearch = commandPalette.getByPlaceholder("Type a command, route, or workflow...");
   await commandSearch.fill(activeProject.name);

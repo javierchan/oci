@@ -65,6 +65,7 @@ test("investigates, re-weights, exports, and navigates the desktop topology", as
   await expect(topologyPulse).toBeVisible();
   await expect(topologyPulse.getByText(`${graph.nodes.length} systems`, { exact: true })).toBeVisible();
   await expect(topologyPulse.getByText("Payload / execution", { exact: true })).toBeVisible();
+  await topologyPulse.getByRole("button", { name: "Expand Topology Pulse", exact: true }).click();
   await expect(topologyPulse.getByText("Ranked path load", { exact: true })).toBeVisible();
   const rankedPath = topologyPulse.locator('button[title*="payload per execution"]').first();
   await rankedPath.hover();
@@ -79,6 +80,8 @@ test("investigates, re-weights, exports, and navigates the desktop topology", as
   await expect(processFilter).toBeVisible();
   await expect(page.getByLabel("Filter by brand")).toBeVisible();
 
+  const displayDisclosure = page.locator("main details > summary").filter({ hasText: /^Display$/ });
+  await displayDisclosure.click();
   const viewActionsBox = await page.getByLabel("Map view actions").boundingBox();
   const processFilterBox = await processFilter.boundingBox();
   const displayControlsBox = await page.getByLabel("Map display controls").boundingBox();
