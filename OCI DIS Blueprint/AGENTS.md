@@ -1045,6 +1045,56 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       engine suites, frontend TypeScript/ESLint/tests/build, OpenAPI/App Knowledge
       drift checks, and production Compose health all pass locally.
 
+### M80 — Claim-level OCI Service Limit Assurance
+- [x] Separate approved runtime `ServiceLimit` values from documentary confidence;
+      never treat a downloaded or hashed Oracle page as proof of an individual limit.
+- [x] Persist immutable-hash claim history with exact normalized-text locators,
+      bounded evidence excerpts, parser version, observed value/unit, confidence,
+      verification time, and an explicit current projection.
+- [x] Report `confirmed`, `conflict`, `not_located`, `source_attention`, and
+      `unverified` for every active numeric rule while excluding and counting
+      non-numeric capability/configuration rules honestly.
+- [x] Bind API Gateway, Streaming, and Queue rules to their narrow canonical
+      Oracle limit pages and prioritize assigned sources during bounded scans.
+- [x] Make scheduled and manual verification use the same deterministic Celery
+      worker; retain the Official Source Governance Agent as an inspection-only
+      explanation layer and App Knowledge Governance as a separate authority.
+- [x] Require human review only for source drift, conflicts, semantic changes,
+      unavailable sources, or tenant-specific override decisions; unchanged
+      current-hash confirmations are automatic.
+- [x] Preserve claim history across verifier releases by including the parser
+      version in the immutable source-hash identity.
+- [x] **Exit criteria**: migration head `20260814_0061`, API/calc/pricing/frontend
+      gates, OpenAPI, complete provider embeddings, Docker migration, real Oracle
+      source smoke, and an honest claim-coverage baseline all pass without
+      restarting production services on an incomplete knowledge artifact.
+
+### M81 — Professional Decision-workspace UI System
+- [x] Establish one restrained Oracle-aligned visual system for light and dark
+      themes, with a warm red action accent, neutral selection states, tighter
+      radii, consistent focus treatment, and readable enterprise typography.
+- [x] Remove duplicated navigation and page breadcrumbs so the persistent shell
+      owns global search, version, authenticated identity, and project context.
+- [x] Preserve the workflow section labels and add a persistent, keyboard-
+      accessible desktop sidebar width from `232` to `360` px without changing
+      the fixed mobile navigation drawer.
+- [x] Recompose Projects, Dashboard, Catalog, Map, BOM, and Agent Operations
+      around clear decision hierarchy, structured data surfaces, and a single
+      primary action per workspace.
+- [x] Preserve advanced controls through progressive disclosure while keeping
+      governed evidence, shareable views, telemetry truth, and deterministic
+      product behavior discoverable.
+- [x] Serialize missing BOM metric rehydration with one bounded transport retry
+      so concurrent reads cannot leave a false `Failed to fetch` state; never
+      fabricate commercial options when the governed endpoint remains unavailable.
+- [x] Validate production rendering at desktop and mobile widths, light and dark
+      themes, keyboard focus, browser console, frontend tests, type checking,
+      linting, production build, and the complete Docker Compose runtime.
+- [x] **Exit criteria**: all primary workspaces match the shared design language,
+      no controls overlap, information hierarchy remains usable at `390 px`,
+      `142` frontend tests and production build pass, Compose serves the rebuilt
+      images, and the repository is synchronized with `origin/main`.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

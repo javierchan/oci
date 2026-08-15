@@ -4,7 +4,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, Boolean, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import Mapped, mapped_column
 
 from .base import Base, TimestampMixin, UUIDMixin
@@ -183,6 +183,40 @@ class ServiceEvidenceSource(Base, UUIDMixin, TimestampMixin):
     last_changed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True))
     content_hash: Mapped[Optional[str]] = mapped_column(String(128))
     status: Mapped[str] = mapped_column(String(50), default="pending_verification", nullable=False)
+
+
+class ServiceLimitEvidenceClaim(Base, UUIDMixin, TimestampMixin):
+    """Claim-level proof that one governed limit was located in one source version."""
+
+    __tablename__ = "service_limit_evidence_claims"
+    __table_args__ = (
+        UniqueConstraint(
+            "service_limit_id",
+            "evidence_source_id",
+            "source_content_hash",
+            "parser_version",
+            name="uq_service_limit_claim_source_hash_parser",
+        ),
+    )
+
+    service_limit_id: Mapped[str] = mapped_column(
+        ForeignKey("service_limits.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    evidence_source_id: Mapped[str] = mapped_column(
+        ForeignKey("service_evidence_sources.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    source_content_hash: Mapped[str] = mapped_column(String(128), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    observed_value: Mapped[Optional[object]] = mapped_column(JSON)
+    observed_unit: Mapped[Optional[str]] = mapped_column(String(50))
+    source_locator: Mapped[Optional[str]] = mapped_column(Text)
+    evidence_excerpt: Mapped[Optional[str]] = mapped_column(Text)
+    parser_version: Mapped[str] = mapped_column(String(100), nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, default=0.0, nullable=False)
+    verified_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    is_current: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
 
 
 class ServiceVerificationJob(Base, UUIDMixin, TimestampMixin):

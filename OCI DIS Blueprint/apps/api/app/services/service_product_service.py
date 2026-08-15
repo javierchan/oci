@@ -19,6 +19,7 @@ from app.models import (
     ServiceEvidenceSource,
     ServiceInteroperabilityRule,
     ServiceLimit,
+    ServiceLimitEvidenceClaim,
     ServiceCommercialPolicy,
     ServiceProductSkuMapping,
     ServiceProductVersion,
@@ -33,6 +34,9 @@ from app.schemas.service_products import (
     ServiceVerificationFindingReviewRequest,
     ServiceInteroperabilityMatrixResponse,
     ServiceInteroperabilityRuleResponse,
+    ServiceLimitAssuranceItemResponse,
+    ServiceLimitAssuranceReportResponse,
+    ServiceLimitAssuranceServiceResponse,
     ServiceLimitResponse,
     ServiceProductDetailResponse,
     ServiceProductListResponse,
@@ -52,8 +56,20 @@ ALLOWED_EVIDENCE_HOSTS = {
 }
 EVIDENCE_FETCH_TIMEOUT_SECONDS = 12.0
 EVIDENCE_USER_AGENT = "OCI-DIS-Blueprint-Service-Verification/1.0"
-CLAIM_PARSER_VERSION = "oracle_http_claim_parser_v2"
+CLAIM_PARSER_VERSION = "oracle_http_claim_parser_v3"
 TERMINAL_JOB_STATUSES = {"completed", "failed"}
+CLAIM_LABEL_ALIASES: dict[str, tuple[str, ...]] = {
+    "max_queues_per_tenancy_per_region": ("Queues",),
+    "max_channels_per_queue": ("Channels Per Queue",),
+    "max_consumer_groups_per_queue": ("Consumer Groups Per Queue",),
+    "max_inflight_messages_per_queue": ("Maximum Number Of In Flight Messages",),
+    "max_concurrent_get_rps": ("Maximum Concurrent GET Requests",),
+    "max_message_ops_per_s_per_api_per_queue": ("Maximum Message Operations",),
+    "ingress_throughput_mb_s_per_queue": ("Ingress Per Queue",),
+    "egress_throughput_mb_s_per_queue": ("Egress Per Queue",),
+    "retention_max_d": ("Message Retention Maximum", "Message Retention"),
+    "visibility_timeout_max_h": ("Message Visibility Timeout Maximum", "Message Visibility Timeout"),
+}
 
 
 def _now_utc() -> datetime:
@@ -113,6 +129,20 @@ def _evidence_excerpt(text: str, max_length: int = 500) -> str:
     return f"{text[: max_length - 1].rstrip()}…"
 
 
+def _matched_evidence_excerpt(text: str, match: re.Match[str], max_length: int = 500) -> str:
+    """Return bounded evidence around the exact parser match, not the page preamble."""
+
+    radius = max_length // 2
+    start = max(0, match.start() - radius)
+    end = min(len(text), match.end() + radius)
+    excerpt = text[start:end].strip()
+    if start > 0:
+        excerpt = f"…{excerpt}"
+    if end < len(text):
+        excerpt = f"{excerpt}…"
+    return excerpt
+
+
 def _canonical_unit(value: str | None) -> str | None:
     """Normalize common Oracle documentation units for governed comparisons."""
 
@@ -148,6 +178,12 @@ def _canonical_unit(value: str | None) -> str | None:
         "workspaces": "workspaces",
         "task": "tasks",
         "tasks": "tasks",
+        "mb/s": "MB/s",
+        "mb per second": "MB/s",
+        "requests/s": "requests/s",
+        "request/s": "requests/s",
+        "requests per second": "requests/s",
+        "request per second": "requests/s",
     }
     return aliases.get(normalized, value.strip())
 
@@ -172,6 +208,8 @@ def _unit_family(unit: str | None) -> str | None:
     if unit in {"s", "min", "h", "days"}:
         return "time"
     if unit in {"partitions", "messages", "requests", "workspaces", "tasks"}:
+        return unit
+    if unit in {"MB/s", "requests/s"}:
         return unit
     return unit
 
@@ -261,6 +299,12 @@ def _values_match(left: object, right: object) -> bool:
         return left == right
 
 
+def _is_claim_eligible_limit(limit: ServiceLimit) -> bool:
+    """Return whether a rule is a numeric documentary claim the parser can prove."""
+
+    return not isinstance(limit.value, bool) and isinstance(limit.value, (int, float))
+
+
 def _label_pattern(value: str) -> str:
     tokens = [re.escape(token) for token in re.findall(r"[a-zA-Z0-9]+", value.lower())]
     if not tokens:
@@ -269,16 +313,37 @@ def _label_pattern(value: str) -> str:
 
 
 def _limit_label_candidates(limit: ServiceLimit) -> list[str]:
-    candidates = [limit.label, limit.limit_key.replace("_", " ")]
+    candidates = [
+        *CLAIM_LABEL_ALIASES.get(limit.limit_key, ()),
+        limit.label,
+        limit.limit_key.replace("_", " "),
+    ]
     if limit.notes:
         candidates.append(limit.notes.split(".")[0])
     seen: set[str] = set()
     result: list[str] = []
     for candidate in candidates:
         normalized = " ".join(candidate.split()).strip()
-        if normalized and normalized.lower() not in seen:
-            seen.add(normalized.lower())
-            result.append(normalized)
+        without_unit_suffix = re.sub(
+            r"\s+(?:kb|mb|gb|seconds?|secs?|minutes?|mins?|hours?|days?|pct)$",
+            "",
+            normalized,
+            flags=re.IGNORECASE,
+        )
+        variants = [normalized]
+        if without_unit_suffix != normalized:
+            variants.append(without_unit_suffix)
+        if without_unit_suffix.lower().startswith("max "):
+            variants.extend(
+                [
+                    f"Maximum {without_unit_suffix[4:]}",
+                    f"Number Of {without_unit_suffix[4:]}",
+                ]
+            )
+        for variant in variants:
+            if variant and variant.lower() not in seen:
+                seen.add(variant.lower())
+                result.append(variant)
     return result
 
 
@@ -288,17 +353,22 @@ def _extract_limit_claims(
     source: ServiceEvidenceSource,
     now: datetime,
 ) -> list[dict[str, object]]:
-    """Extract conservative limit-change proposals tied to existing governed limits."""
+    """Extract conservative claim evidence tied to existing governed limits."""
 
     proposals: list[dict[str, object]] = []
-    unit_pattern = (
-        r"(?P<value>\d+(?:\.\d+)?)\s*"
-        r"(?P<unit>KB|KiB|MB|MiB|GB|GiB|seconds?|secs?|minutes?|mins?|hours?|days?|"
-        r"partitions?|messages?|requests?|workspaces?|tasks?)\b"
-    )
     for limit in limits:
-        if not isinstance(limit.value, (int, float)):
+        if not _is_claim_eligible_limit(limit):
             continue
+        target_unit = _canonical_unit(limit.unit)
+        if target_unit is None:
+            unit_pattern = r"(?P<value>\d+(?:,\d{3})*(?:\.\d+)?)"
+        else:
+            unit_pattern = (
+                r"(?P<value>\d+(?:,\d{3})*(?:\.\d+)?)\s*"
+                r"(?P<unit>MB/s|MB\s+per\s+second|requests?/s|requests?\s+per\s+seconds?|"
+                r"KB|KiB|MB|MiB|GB|GiB|seconds?|secs?|minutes?|mins?|hours?|days?|"
+                r"partitions?|messages?|requests?|workspaces?|tasks?)\b"
+            )
         for label in _limit_label_candidates(limit):
             label_pattern = _label_pattern(label)
             patterns = [
@@ -312,21 +382,20 @@ def _extract_limit_claims(
                     break
             if match is None:
                 continue
-            raw_value = float(match.group("value"))
-            raw_unit = _canonical_unit(match.group("unit"))
-            target_unit = _canonical_unit(limit.unit)
+            raw_value = float(match.group("value").replace(",", ""))
+            raw_unit = _canonical_unit(match.groupdict().get("unit"))
             if not _units_compatible(raw_unit, target_unit):
                 continue
             proposed_value = _clean_numeric(_convert_numeric_unit(raw_value, raw_unit, target_unit))
-            if _values_match(limit.value, proposed_value):
-                continue
             validation = _validate_limit_candidate(limit, proposed_value, target_unit)
             if validation["status"] != "passed":
                 continue
+            match_status = "confirmed" if _values_match(limit.value, proposed_value) else "conflict"
             proposals.append(
                 {
                     "target": "service_limit",
                     "operation": "update",
+                    "match_status": match_status,
                     "limit_id": limit.id,
                     "limit_key": limit.limit_key,
                     "label": limit.label,
@@ -334,9 +403,11 @@ def _extract_limit_claims(
                     "unit": target_unit,
                     "raw_value": _clean_numeric(raw_value),
                     "raw_unit": raw_unit,
+                    "evidence_excerpt": _matched_evidence_excerpt(text, match),
+                    "source_locator": f"normalized-text:{match.start()}-{match.end()} · {label}",
                     "source_url": source.url,
                     "source_retrieved_at": now.isoformat(),
-                    "confidence": max(limit.confidence, 0.86),
+                    "confidence": max(limit.confidence or 0.0, 0.86),
                     "scope": limit.scope,
                     "limit_type": limit.limit_type,
                     "constraint_kind": limit.constraint_kind,
@@ -455,6 +526,248 @@ def serialize_evidence_source(source: ServiceEvidenceSource) -> ServiceEvidenceS
         content_hash=source.content_hash,
         status=source.status,
         updated_at=source.updated_at,
+    )
+
+
+async def _persist_limit_claims(
+    source: ServiceEvidenceSource,
+    source_hash: str,
+    limits: list[ServiceLimit],
+    extracted: list[dict[str, object]],
+    verified_at: datetime,
+    db: AsyncSession,
+) -> None:
+    """Replace the current claim projection for one source while retaining history."""
+
+    current_rows = list(
+        (
+            await db.scalars(
+                select(ServiceLimitEvidenceClaim).where(
+                    ServiceLimitEvidenceClaim.evidence_source_id == source.id,
+                    ServiceLimitEvidenceClaim.is_current.is_(True),
+                )
+            )
+        ).all()
+    )
+    for row in current_rows:
+        row.is_current = False
+
+    extracted_by_limit = {
+        str(item["limit_id"]): item
+        for item in extracted
+        if isinstance(item.get("limit_id"), str)
+    }
+    for limit in limits:
+        item = extracted_by_limit.get(limit.id)
+        status = str(item.get("match_status")) if item else "not_located"
+        existing = await db.scalar(
+            select(ServiceLimitEvidenceClaim).where(
+                ServiceLimitEvidenceClaim.service_limit_id == limit.id,
+                ServiceLimitEvidenceClaim.evidence_source_id == source.id,
+                ServiceLimitEvidenceClaim.source_content_hash == source_hash,
+                ServiceLimitEvidenceClaim.parser_version == CLAIM_PARSER_VERSION,
+            )
+        )
+        confidence = item.get("confidence") if item else None
+        values: dict[str, object | None] = {
+            "status": status,
+            "observed_value": item.get("value") if item else None,
+            "observed_unit": item.get("unit") if item else None,
+            "source_locator": item.get("source_locator") if item else None,
+            "evidence_excerpt": item.get("evidence_excerpt") if item else None,
+            "parser_version": CLAIM_PARSER_VERSION,
+            "confidence": float(confidence) if isinstance(confidence, (int, float)) else 0.0,
+            "verified_at": verified_at,
+            "is_current": True,
+        }
+        if existing is None:
+            db.add(
+                ServiceLimitEvidenceClaim(
+                    service_limit_id=limit.id,
+                    evidence_source_id=source.id,
+                    source_content_hash=source_hash,
+                    **values,
+                )
+            )
+        else:
+            for key, value in values.items():
+                setattr(existing, key, value)
+
+
+def _assurance_status(
+    claim: ServiceLimitEvidenceClaim | None,
+    source: ServiceEvidenceSource | None,
+) -> str:
+    """Return an honest current status for one limit/source claim."""
+
+    if claim is None:
+        return "unverified"
+    if source is None or source.status != "verified":
+        return "source_attention"
+    if source.content_hash != claim.source_content_hash:
+        return "source_attention"
+    if claim.status in {"confirmed", "conflict", "not_located"}:
+        return claim.status
+    return "unverified"
+
+
+async def get_service_limit_assurance(db: AsyncSession) -> ServiceLimitAssuranceReportResponse:
+    """Return claim-level coverage for every active runtime service limit."""
+
+    profiles = list(
+        (
+            await db.scalars(
+                select(ServiceCapabilityProfile)
+                .where(ServiceCapabilityProfile.is_active.is_(True))
+                .order_by(ServiceCapabilityProfile.service_id)
+            )
+        ).all()
+    )
+    profile_by_id = {profile.id: profile for profile in profiles}
+    profile_ids = list(profile_by_id)
+    all_limits = list(
+        (
+            await db.scalars(
+                select(ServiceLimit)
+                .where(
+                    ServiceLimit.service_profile_id.in_(profile_ids),
+                    ServiceLimit.is_active.is_(True),
+                )
+                .order_by(ServiceLimit.service_profile_id, ServiceLimit.limit_key)
+            )
+        ).all()
+    ) if profile_ids else []
+    limits = [limit for limit in all_limits if _is_claim_eligible_limit(limit)]
+    non_numeric_by_service: defaultdict[str, int] = defaultdict(int)
+    for limit in all_limits:
+        if not _is_claim_eligible_limit(limit):
+            profile = profile_by_id[limit.service_profile_id]
+            non_numeric_by_service[profile.service_id] += 1
+    sources = list(
+        (
+            await db.scalars(
+                select(ServiceEvidenceSource).where(
+                    ServiceEvidenceSource.service_profile_id.in_(profile_ids)
+                )
+            )
+        ).all()
+    ) if profile_ids else []
+    source_by_profile_url = {(source.service_profile_id, source.url): source for source in sources}
+    source_by_id = {source.id: source for source in sources}
+    claims = list(
+        (
+            await db.scalars(
+                select(ServiceLimitEvidenceClaim).where(
+                    ServiceLimitEvidenceClaim.service_limit_id.in_([limit.id for limit in limits]),
+                    ServiceLimitEvidenceClaim.is_current.is_(True),
+                )
+            )
+        ).all()
+    ) if limits else []
+    claims_by_limit: dict[str, list[ServiceLimitEvidenceClaim]] = defaultdict(list)
+    for claim in claims:
+        claims_by_limit[claim.service_limit_id].append(claim)
+
+    priority = {"conflict": 0, "source_attention": 1, "not_located": 2, "unverified": 3, "confirmed": 4}
+    items: list[ServiceLimitAssuranceItemResponse] = []
+    counters_by_service: dict[str, dict[str, int]] = defaultdict(lambda: defaultdict(int))
+    for limit in limits:
+        profile = profile_by_id[limit.service_profile_id]
+        source = source_by_profile_url.get((limit.service_profile_id, limit.source_url or ""))
+        candidates = claims_by_limit.get(limit.id, [])
+        selected_claim: ServiceLimitEvidenceClaim | None = None
+        selected_status = "unverified"
+        for claim in candidates:
+            candidate_source = source_by_id.get(claim.evidence_source_id)
+            candidate_status = _assurance_status(claim, candidate_source)
+            if selected_claim is None or priority[candidate_status] < priority[selected_status]:
+                selected_claim = claim
+                selected_status = candidate_status
+                source = candidate_source
+        counters_by_service[profile.service_id][selected_status] += 1
+        counters_by_service[profile.service_id]["active"] += 1
+        items.append(
+            ServiceLimitAssuranceItemResponse(
+                service_id=profile.service_id,
+                service_name=profile.name,
+                limit_id=limit.id,
+                limit_key=limit.limit_key,
+                label=limit.label,
+                value=limit.value,
+                unit=limit.unit,
+                constraint_kind=limit.constraint_kind,
+                enforcement=limit.enforcement,
+                assurance_status=selected_status,
+                source_url=source.url if source else limit.source_url,
+                source_status=source.status if source else None,
+                source_content_hash=(selected_claim.source_content_hash if selected_claim else None),
+                verified_at=selected_claim.verified_at if selected_claim else None,
+                parser_version=selected_claim.parser_version if selected_claim else None,
+                evidence_excerpt=selected_claim.evidence_excerpt if selected_claim else None,
+            )
+        )
+
+    services: list[ServiceLimitAssuranceServiceResponse] = []
+    for profile in profiles:
+        counts = counters_by_service[profile.service_id]
+        active = counts["active"]
+        confirmed = counts["confirmed"]
+        attention = counts["source_attention"]
+        conflicts = counts["conflict"]
+        not_located = counts["not_located"]
+        unverified = counts["unverified"]
+        coverage = round((confirmed / active * 100.0), 2) if active else 100.0
+        status = (
+            "not_applicable"
+            if active == 0
+            else "trusted"
+            if active == confirmed
+            else "attention"
+            if conflicts or attention
+            else "incomplete"
+        )
+        services.append(
+            ServiceLimitAssuranceServiceResponse(
+                service_id=profile.service_id,
+                service_name=profile.name,
+                active_limits=active,
+                non_numeric_rules=non_numeric_by_service[profile.service_id],
+                confirmed_limits=confirmed,
+                conflict_limits=conflicts,
+                not_located_limits=not_located,
+                unverified_limits=unverified,
+                source_attention_limits=attention,
+                coverage_pct=coverage,
+                status=status,
+            )
+        )
+
+    totals: defaultdict[str, int] = defaultdict(int)
+    for item in items:
+        totals[item.assurance_status] += 1
+    active_total = len(items)
+    confirmed_total = totals["confirmed"]
+    coverage_total = round((confirmed_total / active_total * 100.0), 2) if active_total else 100.0
+    report_status = (
+        "trusted"
+        if active_total == confirmed_total
+        else "attention"
+        if totals["conflict"] or totals["source_attention"]
+        else "incomplete"
+    )
+    return ServiceLimitAssuranceReportResponse(
+        generated_at=_now_utc(),
+        status=report_status,
+        active_limits=active_total,
+        non_numeric_rules=sum(non_numeric_by_service.values()),
+        confirmed_limits=confirmed_total,
+        conflict_limits=totals["conflict"],
+        not_located_limits=totals["not_located"],
+        unverified_limits=totals["unverified"],
+        source_attention_limits=totals["source_attention"],
+        coverage_pct=coverage_total,
+        services=services,
+        limits=items,
     )
 
 
@@ -1117,9 +1430,24 @@ async def run_verification_job(job_id: str, db: AsyncSession) -> ServiceVerifica
             .order_by(ServiceLimit.limit_key)
         )
     ).all()
+    limits = [limit for limit in limits if _is_claim_eligible_limit(limit)]
     limits_by_profile: dict[str, list[ServiceLimit]] = defaultdict(list)
     for limit in limits:
         limits_by_profile[limit.service_profile_id].append(limit)
+
+    assigned_sources = {
+        (limit.service_profile_id, limit.source_url)
+        for limit in limits
+        if limit.source_url
+    }
+    sources = sorted(
+        sources,
+        key=lambda source: (
+            0 if (source.service_profile_id, source.url) in assigned_sources else 1,
+            source.trust_tier,
+            source.url,
+        ),
+    )
 
     queued_sources = [
         source for source in sources if _source_should_be_checked(source, request, now)
@@ -1156,33 +1484,50 @@ async def run_verification_job(job_id: str, db: AsyncSession) -> ServiceVerifica
             source.last_checked_at = now
             source.source_type = source.source_type or "official_docs"
             source_had_findings = False
-            if old_hash and old_hash != new_hash:
+            content_changed = bool(old_hash and old_hash != new_hash)
+            if content_changed:
                 source.last_changed_at = now
-                source.status = "pending_review"
-                job.changes_detected += 1
-                source_had_findings = True
-                finding = await _create_verification_finding(
-                    job,
-                    source,
-                    "source_content_changed",
-                    "medium",
-                    "Official source content changed",
-                    "The official evidence source returned a different content hash than the last governed check.",
-                    {"content_hash": old_hash},
-                    {"content_hash": new_hash, "http_status": status_code},
-                    _evidence_excerpt(normalized),
-                    "Review the source and decide whether service limits or interoperability rules need a governed update.",
-                    db,
-                )
-                finding_summaries.append(serialize_verification_finding(finding).model_dump(mode="json"))
-                recommendations.append({"source_url": source.url, "action": "review_changed_source"})
 
-            for proposal in _extract_limit_claims(
+            source_limits = [
+                limit
+                for limit in limits_by_profile.get(source.service_profile_id, [])
+                if limit.source_url == source.url
+            ]
+            extracted_claims = _extract_limit_claims(
                 normalized,
-                limits_by_profile.get(source.service_profile_id, []),
+                source_limits,
                 source,
                 now,
-            ):
+            )
+            await _persist_limit_claims(
+                source,
+                new_hash,
+                source_limits,
+                extracted_claims,
+                now,
+                db,
+            )
+            conflict_claims = [
+                claim for claim in extracted_claims if claim.get("match_status") == "conflict"
+            ]
+            confirmed_limit_ids = {
+                str(claim["limit_id"])
+                for claim in extracted_claims
+                if claim.get("match_status") == "confirmed"
+            }
+            located_limit_ids = {
+                str(claim["limit_id"])
+                for claim in extracted_claims
+                if isinstance(claim.get("limit_id"), str)
+            }
+            for source_limit in source_limits:
+                if source_limit.id in confirmed_limit_ids:
+                    source_limit.source_retrieved_at = now
+            not_located_count = sum(
+                1 for limit in source_limits if limit.id not in located_limit_ids
+            )
+
+            for proposal in conflict_claims:
                 job.changes_detected += 1
                 source_had_findings = True
                 finding = await _create_verification_finding(
@@ -1198,7 +1543,7 @@ async def run_verification_job(job_id: str, db: AsyncSession) -> ServiceVerifica
                         "limit_key": proposal["limit_key"],
                     },
                     proposal,
-                    _evidence_excerpt(normalized),
+                    str(proposal.get("evidence_excerpt") or "") or None,
                     "Review the source excerpt and accept the finding only if the extracted value matches the official documentation.",
                     db,
                 )
@@ -1210,6 +1555,34 @@ async def run_verification_job(job_id: str, db: AsyncSession) -> ServiceVerifica
                         "limit_key": proposal["limit_key"],
                     }
                 )
+
+            if content_changed:
+                job.changes_detected += 1
+                source_had_findings = True
+                finding = await _create_verification_finding(
+                    job,
+                    source,
+                    "source_content_changed",
+                    "medium",
+                    "Official source content changed",
+                    (
+                        "The official source hash changed. Claim-level revalidation confirmed "
+                        f"{len(confirmed_limit_ids)} of {len(source_limits)} governed limits and could not locate "
+                        f"{not_located_count}."
+                    ),
+                    {"content_hash": old_hash},
+                    {
+                        "content_hash": new_hash,
+                        "http_status": status_code,
+                        "confirmed_limits": len(confirmed_limit_ids),
+                        "not_located_limits": not_located_count,
+                    },
+                    _evidence_excerpt(normalized),
+                    "Review the changed source and unresolved claim-level coverage before relying on it as current.",
+                    db,
+                )
+                finding_summaries.append(serialize_verification_finding(finding).model_dump(mode="json"))
+                recommendations.append({"source_url": source.url, "action": "review_changed_source"})
 
             deprecation_claim = _extract_deprecation_claim(normalized, source)
             if deprecation_claim is not None:
@@ -1318,6 +1691,51 @@ def _parse_iso_datetime(value: object) -> datetime | None:
         return None
 
 
+async def _record_claim_review_outcome(
+    finding: ServiceVerificationFinding,
+    outcome: str,
+    db: AsyncSession,
+) -> None:
+    """Reconcile a reviewed value-conflict finding with its current evidence claim."""
+
+    new_value = finding.new_value
+    if not finding.source_url or not finding.service_profile_id:
+        return
+    source = await db.scalar(
+        select(ServiceEvidenceSource).where(
+            ServiceEvidenceSource.service_profile_id == finding.service_profile_id,
+            ServiceEvidenceSource.url == finding.source_url,
+        )
+    )
+    if source is None:
+        return
+    if isinstance(new_value, dict) and new_value.get("target") == "service_limit":
+        limit_id = new_value.get("limit_id")
+        claim = await db.scalar(
+            select(ServiceLimitEvidenceClaim).where(
+                ServiceLimitEvidenceClaim.service_limit_id == limit_id,
+                ServiceLimitEvidenceClaim.evidence_source_id == source.id,
+                ServiceLimitEvidenceClaim.is_current.is_(True),
+            )
+        )
+        if claim is not None:
+            claim.status = "confirmed" if outcome == "accepted" else "dismissed"
+
+    other_open = list(
+        (
+            await db.scalars(
+                select(ServiceVerificationFinding).where(
+                    ServiceVerificationFinding.source_url == finding.source_url,
+                    ServiceVerificationFinding.review_status == "open",
+                    ServiceVerificationFinding.id != finding.id,
+                )
+            )
+        ).all()
+    )
+    if not other_open:
+        source.status = "verified"
+
+
 async def _apply_accepted_finding_update(
     finding: ServiceVerificationFinding,
     actor_id: str,
@@ -1403,15 +1821,7 @@ async def _apply_accepted_finding_update(
     if isinstance(confidence, (int, float)):
         limit.confidence = float(confidence)
 
-    if isinstance(source_url, str) and finding.service_profile_id:
-        source = await db.scalar(
-            select(ServiceEvidenceSource).where(
-                ServiceEvidenceSource.service_profile_id == finding.service_profile_id,
-                ServiceEvidenceSource.url == source_url,
-            )
-        )
-        if source is not None:
-            source.status = "verified"
+    await _record_claim_review_outcome(finding, "accepted", db)
 
     new_limit: dict[str, object] = {
         "value": limit.value,
@@ -1464,6 +1874,8 @@ async def review_verification_finding(
     applied_update: dict[str, object] | None = None
     if request.review_status == "accepted":
         applied_update = await _apply_accepted_finding_update(finding, actor_id, db)
+    elif request.review_status == "dismissed":
+        await _record_claim_review_outcome(finding, "dismissed", db)
     finding.review_status = request.review_status
     finding.reviewed_by = actor_id
     finding.reviewed_at = _now_utc()

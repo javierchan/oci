@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Boxes, Download, ExternalLink, List, Network } from "lucide-react";
 
 import { AiReviewButton } from "@/components/ai-review-button";
-import { Breadcrumb } from "@/components/breadcrumb";
 import { ProjectCustomerEditor } from "@/components/project-customer-editor";
 import { ProjectAttentionCenter } from "@/components/project-attention-center";
 import { ProjectAdoptionMetrics } from "@/components/project-adoption-metrics";
@@ -233,7 +232,7 @@ export default async function ProjectDashboardPage({
                   Planned baseline approved
                 </span>
               ) : (
-                <span className="app-status-chip archived">No planned baseline</span>
+                <span className="app-status-chip archived">Deployment baseline not set</span>
               )}
             </div>
             <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
@@ -250,18 +249,10 @@ export default async function ProjectDashboardPage({
                 demos, and non-production analysis.
               </p>
             ) : null}
-            <div className="mt-4">
-              <Breadcrumb
-                items={[
-                  { label: "Home", href: "/projects" },
-                  { label: "Projects", href: "/projects" },
-                  { label: project.name },
-                ]}
-              />
-            </div>
           </div>
           <div className="flex flex-col items-start gap-3 lg:items-end">
             <div className="flex flex-wrap items-center gap-2">
+              <AiReviewButton projectId={projectId} label="Review project" className="app-button-primary h-10 gap-2" />
               <Link
                 href={apiDownloadUrl(`/api/v1/exports/${projectId}/brief`)}
                 className="app-button-secondary h-10 gap-2"
@@ -279,7 +270,6 @@ export default async function ProjectDashboardPage({
                 Map
               </Link>
               <RecalculateButton projectId={projectId} />
-              <AiReviewButton projectId={projectId} label="Review project" className="app-button-secondary h-10 gap-2" />
             </div>
             {latestSnapshot ? (
               <p className="text-xs text-[var(--color-text-muted)]">

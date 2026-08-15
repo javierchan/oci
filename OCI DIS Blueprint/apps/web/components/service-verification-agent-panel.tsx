@@ -6,9 +6,8 @@ import { useEffect, useMemo, useState } from "react";
 import { AlertTriangle, CheckCircle2, Clock3, Play, ShieldAlert } from "lucide-react";
 
 import { api, getErrorMessage } from "@/lib/api";
-import { AgentDecisionWorkspace } from "@/components/agent-decision-workspace";
 import { formatDate } from "@/lib/format";
-import type { AgentRun, ServiceVerificationFinding, ServiceVerificationJob } from "@/lib/types";
+import type { ServiceVerificationFinding, ServiceVerificationJob } from "@/lib/types";
 
 function labelize(value: string): string {
   return value.replace(/_/g, " ");
@@ -36,20 +35,6 @@ function hasApplicableUpdate(finding: ServiceVerificationFinding): boolean {
   );
 }
 
-async function waitForAgent(run: AgentRun): Promise<AgentRun> {
-  let current = run;
-  for (let attempt = 0; attempt < 120; attempt += 1) {
-    if (["completed", "failed", "cancelled"].includes(current.status)) return current;
-    await new Promise((resolve) => window.setTimeout(resolve, 1000));
-    current = await api.getAgentRun(current.id);
-  }
-  throw new Error("Official Source Governance Agent did not finish within two minutes.");
-}
-
-function isVerificationJob(value: unknown): value is ServiceVerificationJob {
-  return typeof value === "object" && value !== null && typeof (value as ServiceVerificationJob).id === "string" && Array.isArray((value as ServiceVerificationJob).findings);
-}
-
 export function ServiceVerificationAgentPanel({
   initialJob,
   scopeServiceId,
@@ -64,7 +49,6 @@ export function ServiceVerificationAgentPanel({
   const [isRunning, setIsRunning] = useState(false);
   const [isLoadingFindings, setIsLoadingFindings] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [agentRun, setAgentRun] = useState<AgentRun | null>(null);
 
   const scopeLabel = useMemo(() => (scopeServiceId ? scopeServiceId : "All products"), [scopeServiceId]);
 
@@ -130,17 +114,12 @@ export function ServiceVerificationAgentPanel({
     setIsRunning(true);
     setErrorMessage(null);
     try {
-      const terminal = await waitForAgent(await api.runAgent({
-        agent_type: "service_verification",
-        context: { request: { service_ids: scopeServiceId ? [scopeServiceId] : [], max_sources: maxSources, force } },
-        message: "Compare official Oracle evidence with governed Service Product rules and prepare reviewable decisions.",
-      }));
-      if (terminal.status !== "completed" || !isVerificationJob(terminal.result?.evidence)) {
-        throw new Error("Official Source Governance Agent returned an invalid result.");
-      }
-      setAgentRun(terminal);
-      setJob(terminal.result.evidence);
-      setIsRunning(false);
+      const created = await api.runServiceVerificationJob({
+        service_ids: scopeServiceId ? [scopeServiceId] : [],
+        max_sources: maxSources,
+        force,
+      });
+      setJob(created);
     } catch (error) {
       setErrorMessage(getErrorMessage(error, "Unable to run service verification."));
       setIsRunning(false);
@@ -167,10 +146,10 @@ export function ServiceVerificationAgentPanel({
       <div className="flex items-start gap-3">
         <ShieldAlert className="mt-1 h-5 w-5 text-[var(--color-accent)]" />
         <div>
-          <p className="app-label">Verification Agent</p>
+          <p className="app-label">Automated Evidence Verifier</p>
           <h2 className="mt-2 text-xl font-semibold text-[var(--color-text-primary)]">Evidence queue</h2>
           <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">
-            Official sources are checked against the governed evidence registry. Findings require review before rules change.
+            Official Oracle sources are checked deterministically and each active limit receives claim-level proof or an explicit coverage gap. Findings require review before values change.
           </p>
         </div>
       </div>
@@ -243,8 +222,6 @@ export function ServiceVerificationAgentPanel({
             {errorMessage}
           </div>
         ) : null}
-
-        {agentRun ? <AgentDecisionWorkspace run={agentRun} onRunChange={setAgentRun} compact /> : null}
 
         {job ? (
           <div className="space-y-3">

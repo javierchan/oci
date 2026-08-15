@@ -135,7 +135,7 @@ export default function MapPage({ params }: MapPageProps): JSX.Element {
   const [triageOpen, setTriageOpen] = useState<boolean>(false);
   const [reviewedRiskEdgeIds, setReviewedRiskEdgeIds] = useState<string[]>([]);
   const [reviewSessionProjectId, setReviewSessionProjectId] = useState<string | null>(null);
-  const [pulseExpanded, setPulseExpanded] = useState<boolean>(true);
+  const [pulseExpanded, setPulseExpanded] = useState<boolean>(false);
   const [pulseHighlightedEdgeIds, setPulseHighlightedEdgeIds] = useState<string[]>([]);
   const [pulseIntegrationId, setPulseIntegrationId] = useState<string>("");
   const [widePanel, setWidePanel] = useState<boolean>(false);

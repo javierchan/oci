@@ -5,7 +5,11 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  PointerEvent as ReactPointerEvent,
+  ReactNode,
+} from "react";
 import { useEffect, useState } from "react";
 import {
   BadgeDollarSign,
@@ -82,17 +86,26 @@ const ADMIN_ICONS: Record<string, JSX.Element> = {
 const PROJECT_ID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
+const SIDEBAR_STORAGE_KEY = "oci-dis-sidebar-width";
+const SIDEBAR_DEFAULT_WIDTH = 272;
+const SIDEBAR_MIN_WIDTH = 232;
+const SIDEBAR_MAX_WIDTH = 360;
+
 function isProjectIdSegment(segment: string | undefined): boolean {
   return typeof segment === "string" && PROJECT_ID_PATTERN.test(segment);
 }
 
-function formatProjectLabel(projectId: string): string {
-  return projectId.length > 28 ? `${projectId.slice(0, 28)}…` : projectId;
+function formatProjectLabel(label: string): string {
+  return PROJECT_ID_PATTERN.test(label) && label.length > 28 ? `${label.slice(0, 28)}…` : label;
+}
+
+function clampSidebarWidth(width: number): number {
+  return Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(width)));
 }
 
 function linkClasses(active: boolean): string {
   return [
-    "relative block rounded-md px-3 py-[7px] text-sm font-medium transition",
+    "relative block rounded-md px-3 py-2 text-sm font-medium transition",
     active
       ? "bg-[var(--surface-2)] text-[var(--ink-1)] before:absolute before:bottom-1.5 before:left-0 before:top-1.5 before:w-0.5 before:rounded-full before:bg-[var(--accent)]"
       : "text-[var(--color-text-secondary)] hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)]",
@@ -209,22 +222,24 @@ function NavPanel({
         </div>
       </div>
 
-      <button
-        type="button"
-        onClick={() => {
-          onNavigate?.();
-          requestOpenCommandPalette();
-        }}
-        className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-left text-sm text-[var(--color-text-muted)] transition hover:bg-[var(--color-hover)]"
-        aria-label="Open command palette"
-        aria-haspopup="dialog"
-        aria-keyshortcuts="Meta+K Control+K"
-        title="Search commands and workspace routes"
-      >
-        <Search className="h-4 w-4" />
-        <span className="min-w-0 flex-1 truncate">Search or jump...</span>
-        <span className="console-kbd">⌘K</span>
-      </button>
+      {mobile ? (
+        <button
+          type="button"
+          onClick={() => {
+            onNavigate?.();
+            requestOpenCommandPalette();
+          }}
+          className="mt-4 flex items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2.5 text-left text-sm text-[var(--color-text-muted)] transition hover:bg-[var(--color-hover)]"
+          aria-label="Open command palette"
+          aria-haspopup="dialog"
+          aria-keyshortcuts="Meta+K Control+K"
+          title="Search commands and workspace routes"
+        >
+          <Search className="h-4 w-4" />
+          <span className="min-w-0 flex-1 truncate">Search or jump...</span>
+          <span className="console-kbd">⌘K</span>
+        </button>
+      ) : null}
 
       <NavSection title="Workspace">
         <nav className="space-y-2">
@@ -249,11 +264,11 @@ function NavPanel({
               Current Project
             </p>
             <p
-              className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]"
+              className="mt-2 flex min-w-0 items-start gap-2 text-sm font-medium leading-5 text-[var(--color-text-primary)]"
               title={projectContext.label}
             >
-              <ChevronRight className="h-4 w-4 text-[var(--color-text-muted)]" />
-              {formatProjectLabel(projectContext.label)}
+              <ChevronRight className="mt-0.5 h-4 w-4 shrink-0 text-[var(--color-text-muted)]" />
+              <span className="line-clamp-2 min-w-0">{formatProjectLabel(projectContext.label)}</span>
             </p>
           </div>
           <nav className="space-y-4" aria-label="Project workflow navigation">
@@ -321,12 +336,78 @@ function NavPanel({
             <p className="min-w-0 truncate text-sm font-medium text-[var(--color-text-primary)]">
               {hasProjectContext ? sectionTitle : sectionTitle === "Project" ? "Project" : sectionTitle}
             </p>
-            <span className="shrink-0 font-mono text-[10px] font-medium text-[var(--color-text-muted)]">
-              v{APP_VERSION}
-            </span>
+            {mobile ? (
+              <span className="shrink-0 font-mono text-[10px] font-medium text-[var(--color-text-muted)]">
+                v{APP_VERSION}
+              </span>
+            ) : null}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function SidebarResizeHandle({
+  width,
+  resizing,
+  onWidthChange,
+  onResizingChange,
+}: {
+  width: number;
+  resizing: boolean;
+  onWidthChange: (_width: number) => void;
+  onResizingChange: (_resizing: boolean) => void;
+}): JSX.Element {
+  function beginResize(event: ReactPointerEvent<HTMLDivElement>): void {
+    event.preventDefault();
+    const startX = event.clientX;
+    const startWidth = width;
+    onResizingChange(true);
+
+    function handlePointerMove(pointerEvent: PointerEvent): void {
+      onWidthChange(clampSidebarWidth(startWidth + pointerEvent.clientX - startX));
+    }
+
+    function finishResize(): void {
+      onResizingChange(false);
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", finishResize);
+      window.removeEventListener("pointercancel", finishResize);
+    }
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", finishResize, { once: true });
+    window.addEventListener("pointercancel", finishResize, { once: true });
+  }
+
+  function handleKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    let nextWidth = width;
+    if (event.key === "ArrowLeft") nextWidth -= 8;
+    if (event.key === "ArrowRight") nextWidth += 8;
+    if (event.key === "Home") nextWidth = SIDEBAR_MIN_WIDTH;
+    if (event.key === "End") nextWidth = SIDEBAR_MAX_WIDTH;
+    if (nextWidth === width) return;
+    event.preventDefault();
+    onWidthChange(clampSidebarWidth(nextWidth));
+  }
+
+  return (
+    <div
+      role="separator"
+      aria-label="Resize workspace navigation"
+      aria-orientation="vertical"
+      aria-valuemin={SIDEBAR_MIN_WIDTH}
+      aria-valuemax={SIDEBAR_MAX_WIDTH}
+      aria-valuenow={width}
+      tabIndex={0}
+      title="Drag to resize · Double-click to reset"
+      onPointerDown={beginResize}
+      onDoubleClick={() => onWidthChange(SIDEBAR_DEFAULT_WIDTH)}
+      onKeyDown={handleKeyDown}
+      className={`group absolute inset-y-0 -right-1.5 z-20 hidden w-3 cursor-ew-resize touch-none items-center justify-center outline-none lg:flex ${resizing ? "bg-[var(--selection-bg)]" : ""}`}
+    >
+      <span className={`h-full w-px transition-colors ${resizing ? "bg-[var(--accent)]" : "bg-transparent group-hover:bg-[var(--accent)] group-focus-visible:bg-[var(--accent)]"}`} />
     </div>
   );
 }
@@ -341,6 +422,19 @@ export function Nav(): JSX.Element {
       : { label: "Project", status: "idle" },
   );
   const [mobileOpen, setMobileOpen] = useState<boolean>(false);
+  const [sidebarWidth, setSidebarWidth] = useState<number>(SIDEBAR_DEFAULT_WIDTH);
+  const [sidebarResizing, setSidebarResizing] = useState<boolean>(false);
+
+  useEffect(() => {
+    const storedWidth = Number(window.localStorage.getItem(SIDEBAR_STORAGE_KEY));
+    if (Number.isFinite(storedWidth) && storedWidth > 0) {
+      setSidebarWidth(clampSidebarWidth(storedWidth));
+    }
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(SIDEBAR_STORAGE_KEY, String(sidebarWidth));
+  }, [sidebarWidth]);
 
   useEffect(() => {
     let cancelled = false;
@@ -484,15 +578,26 @@ export function Nav(): JSX.Element {
         </div>
       ) : null}
 
-      <aside className="hidden border-r border-[var(--line)] bg-[var(--surface)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:w-[232px] lg:shrink-0 lg:overflow-y-auto">
-        <NavPanel
-          pathname={pathname}
-          baseLinks={baseLinks}
-          adminLinks={adminLinks}
-          projectLinks={projectLinks}
-          projectContext={projectContext}
-          hasProjectContext={hasProjectContext}
-          sectionTitle={sectionTitle}
+      <aside
+        className="relative hidden border-r border-[var(--line)] bg-[var(--surface)] lg:sticky lg:top-0 lg:flex lg:h-screen lg:shrink-0"
+        style={{ width: sidebarWidth }}
+      >
+        <div className="min-w-0 flex-1 overflow-y-auto">
+          <NavPanel
+            pathname={pathname}
+            baseLinks={baseLinks}
+            adminLinks={adminLinks}
+            projectLinks={projectLinks}
+            projectContext={projectContext}
+            hasProjectContext={hasProjectContext}
+            sectionTitle={sectionTitle}
+          />
+        </div>
+        <SidebarResizeHandle
+          width={sidebarWidth}
+          resizing={sidebarResizing}
+          onWidthChange={setSidebarWidth}
+          onResizingChange={setSidebarResizing}
         />
       </aside>
     </>

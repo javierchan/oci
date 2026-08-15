@@ -247,7 +247,7 @@ export function GraphControls({
       </div>
 
       <div className="grid gap-2 border-t border-[var(--color-border)] px-4 py-2 xl:grid-cols-[minmax(18rem,0.8fr)_minmax(0,2fr)] xl:items-center">
-        <div className="flex min-w-0 items-center gap-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100">
+        <div className={`flex min-w-0 items-center gap-3 rounded-lg border px-3 py-2 ${riskPathCount === 0 ? "border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] text-[var(--color-qa-ok-text)]" : "border-amber-200 bg-amber-50 text-amber-950 dark:border-amber-900 dark:bg-amber-950 dark:text-amber-100"}`}>
           <ShieldAlert className="h-4 w-4 shrink-0" />
           <button type="button" onClick={onOpenTriage} className="min-w-0 flex-1 text-left hover:underline">
             <span className="block text-xs font-semibold">
@@ -256,7 +256,9 @@ export function GraphControls({
                 : `${degradedSystemCount} systems · ${riskPathCount} paths require attention`}
             </span>
             <span className="mt-0.5 block text-[10px] font-semibold opacity-75" aria-live="polite">
-              {reviewedRiskCount} of {riskPathCount} reviewed in this session
+              {riskPathCount === 0
+                ? `${compactCount(qaTotals.total)} governed paths are clear`
+                : `${reviewedRiskCount} of ${riskPathCount} reviewed in this session`}
             </span>
           </button>
           <button
@@ -333,7 +335,9 @@ export function GraphControls({
           </button>
         ) : null}
 
-        <div className="ml-auto flex flex-wrap items-center justify-end gap-1" aria-label="Map display controls">
+        <details className="ml-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <summary className="cursor-pointer px-3 py-2 text-xs font-semibold text-[var(--color-text-secondary)]">Display</summary>
+          <div className="flex flex-wrap items-center justify-end gap-1 border-t border-[var(--color-border)] p-2" aria-label="Map display controls">
           <label className="flex min-h-8 items-center gap-2 rounded-lg bg-[var(--color-surface-2)] px-2.5 text-xs font-semibold text-[var(--color-text-secondary)]">
             <Activity className="h-3.5 w-3.5" />
             Weight
@@ -358,7 +362,8 @@ export function GraphControls({
             <button type="button" onClick={() => onColorModeChange("qa")} aria-pressed={colorMode === "qa"} className={segmentClasses(colorMode === "qa")}>QA color</button>
             <button type="button" onClick={() => onColorModeChange("bp")} aria-pressed={colorMode === "bp"} className={segmentClasses(colorMode === "bp")}>Process color</button>
           </div>
-        </div>
+          </div>
+        </details>
       </div>
     </section>
     </Tooltip.Provider>

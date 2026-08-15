@@ -1,12 +1,12 @@
 /* Governed service product detail page. */
 
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, ArrowRight, ExternalLink, Network, ShieldCheck } from "lucide-react";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { ServiceVerificationAgentPanel } from "@/components/service-verification-agent-panel";
-import { api, isApiErrorCode } from "@/lib/api";
+import { api, isApiError, isApiErrorCode } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 import type { ServiceInteroperabilityRule, ServiceLimit, ServiceProductDetail } from "@/lib/types";
 
@@ -48,6 +48,12 @@ function verificationTone(status: string): string {
   if (status === "needs_attention") {
     return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
   }
+  return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
+}
+
+function assuranceTone(status: string): string {
+  if (status === "confirmed") return "border-emerald-300 bg-emerald-50 text-emerald-900 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-100";
+  if (status === "conflict" || status === "source_attention") return "border-rose-300 bg-rose-50 text-rose-900 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-100";
   return "border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-100";
 }
 
@@ -97,6 +103,9 @@ async function loadService(serviceId: string): Promise<ServiceProductDetail> {
   try {
     return await api.getServiceProduct(serviceId);
   } catch (error) {
+    if (isApiError(error) && error.status === 401) {
+      redirect(`/login?next=${encodeURIComponent(`/admin/services/${serviceId}`)}`);
+    }
     if (isApiErrorCode(error, "SERVICE_PRODUCT_NOT_FOUND")) {
       notFound();
     }
@@ -111,9 +120,16 @@ export default async function AdminServiceDetailPage({
 }): Promise<JSX.Element> {
   const { serviceId } = await params;
   const service = await loadService(serviceId);
-  const verificationJobs = await api.listServiceVerificationJobs({ limit: 10 }).catch(() => ({ jobs: [], total: 0 }));
+  const [verificationJobs, assurance] = await Promise.all([
+    api.listServiceVerificationJobs({ limit: 10 }).catch(() => ({ jobs: [], total: 0 })),
+    api.getServiceLimitAssurance(),
+  ]);
   const latestServiceJob =
     verificationJobs.jobs.find((job) => job.services_checked.map(String).includes(service.service_id)) ?? null;
+  const serviceAssurance = assurance.services.find((item) => item.service_id === service.service_id);
+  const assuranceByLimit = new Map(
+    assurance.limits.filter((item) => item.service_id === service.service_id).map((item) => [item.limit_id, item]),
+  );
   const fitBullets = splitText(service.architectural_fit);
   const antiPatternBullets = splitText(service.anti_patterns);
 
@@ -151,12 +167,16 @@ export default async function AdminServiceDetailPage({
         </div>
       </section>
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <StatCard label="Limits" value={service.limits.length} />
         <StatCard label="Evidence Sources" value={service.evidence_sources.length} />
         <StatCard label="Interoperability Rules" value={service.interoperability_rules.length} />
         <StatCard label="SLA Uptime" value={service.sla_uptime_pct === null ? "Not captured" : `${service.sla_uptime_pct}%`} />
         <StatCard label="Commercial Meters" value={service.approved_mapping_count} />
+        <StatCard
+          label="Limit Assurance"
+          value={serviceAssurance?.status === "not_applicable" ? "N/A" : `${serviceAssurance?.coverage_pct ?? 0}%`}
+        />
       </section>
 
       <section className="app-card p-6">
@@ -221,11 +241,15 @@ export default async function AdminServiceDetailPage({
                     <th className="px-6 py-3">Behavior</th>
                     <th className="px-6 py-3">Applies when</th>
                     <th className="px-6 py-3">Confidence</th>
+                    <th className="px-6 py-3">Assurance</th>
                     <th className="px-6 py-3">Source</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-[var(--color-border)]">
-                  {sortedLimits(service.limits).map((limit) => (
+                  {sortedLimits(service.limits).map((limit) => {
+                    const limitAssurance = assuranceByLimit.get(limit.id);
+                    const assuranceStatus = limitAssurance?.assurance_status ?? "unverified";
+                    return (
                     <tr key={limit.id}>
                       <td className="px-6 py-4">
                         <p className="font-semibold text-[var(--color-text-primary)]">{limit.label}</p>
@@ -249,6 +273,14 @@ export default async function AdminServiceDetailPage({
                       </td>
                       <td className="px-6 py-4 text-[var(--color-text-secondary)]">{Math.round(limit.confidence * 100)}%</td>
                       <td className="px-6 py-4">
+                        <span className={`rounded-full border px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] ${assuranceTone(assuranceStatus)}`}>
+                          {labelize(assuranceStatus)}
+                        </span>
+                        {limitAssurance?.verified_at ? (
+                          <p className="mt-2 text-xs text-[var(--color-text-muted)]">{formatDate(limitAssurance.verified_at)}</p>
+                        ) : null}
+                      </td>
+                      <td className="px-6 py-4">
                         {limit.source_url ? (
                           <a href={limit.source_url} className="app-link inline-flex items-center gap-1" target="_blank" rel="noreferrer">
                             Source <ExternalLink className="h-3 w-3" />
@@ -258,10 +290,11 @@ export default async function AdminServiceDetailPage({
                         )}
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {service.limits.length === 0 ? (
                     <tr>
-                      <td className="px-6 py-8 text-sm text-[var(--color-text-secondary)]" colSpan={6}>
+                      <td className="px-6 py-8 text-sm text-[var(--color-text-secondary)]" colSpan={7}>
                         No normalized limits have been captured for this service.
                       </td>
                     </tr>

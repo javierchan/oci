@@ -28,7 +28,7 @@ export function WorkspaceShell({ children }: { children: ReactNode }): JSX.Eleme
         <Nav />
         <div className="min-h-screen min-w-0 flex-1 bg-[var(--color-page-bg)]">
           <WorkspaceTopBar />
-          <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-7 lg:py-6">{children}</main>
+          <main className="min-w-0 px-4 py-5 sm:px-6 lg:px-8 lg:py-6">{children}</main>
         </div>
       </div>
       <ToastStack />

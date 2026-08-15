@@ -287,7 +287,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
         </section>
       ) : null}
 
-      <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <section className="app-table-shell grid divide-y divide-[var(--color-border)] md:grid-cols-4 md:divide-x md:divide-y-0">
         {[
           { label: "Active projects", value: activeCount, sub: "ready for assessment", icon: FolderOpen },
           { label: "Integrations tracked", value: totalIntegrations, sub: "across visible workspaces", icon: Layers3 },
@@ -296,7 +296,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
         ].map((stat) => {
           const Icon = stat.icon;
           return (
-            <article key={stat.label} className="console-stat">
+            <article key={stat.label} className="p-4 md:p-5">
               <div className="flex items-start justify-between gap-3">
                 <p className="app-label">{stat.label}</p>
                 <span className="rounded-lg bg-[var(--color-surface-2)] p-2 text-[var(--color-text-secondary)]">
@@ -334,7 +334,7 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
             </div>
             <span className="console-pill">{visibleActiveProjects.length} workspaces</span>
           </div>
-          <div className="grid gap-4 lg:grid-cols-2 xl:grid-cols-3">
+          <div className="app-table-shell">
           <div className="space-y-4 p-4 md:hidden">
             {visibleActiveProjects.map((row: ProjectRow) => (
               <article
@@ -392,28 +392,27 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
             ))}
           </div>
 
-          <div className="hidden contents md:contents">
+          <div className="hidden md:block">
+            <div className="grid grid-cols-[minmax(0,2.4fr)_8rem_7rem_8rem_11rem] items-center gap-4 border-b border-[var(--color-border)] bg-[var(--color-table-header-bg)] px-5 py-3 text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+              <span>Project</span>
+              <span>Status</span>
+              <span>Integrations</span>
+              <span>Created</span>
+              <span className="text-right">Actions</span>
+            </div>
             {visibleActiveProjects.map((row: ProjectRow) => (
               <article
                 key={row.project.id}
-                className="app-card group flex min-h-[17rem] flex-col p-5 transition hover:-translate-y-0.5 hover:border-[var(--color-accent)] hover:shadow-[var(--shadow-panel)]"
+                className="group grid grid-cols-[minmax(0,2.4fr)_8rem_7rem_8rem_11rem] items-center gap-4 border-b border-[var(--color-border)] px-5 py-4 transition last:border-b-0 hover:bg-[var(--color-table-row-hover)]"
               >
-                <div className="flex items-start justify-between gap-4">
-                  <div className="flex items-center gap-3">
-                    <span className="flex h-9 w-9 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-accent)]">
+                <div className="flex min-w-0 items-start gap-3">
+                    <span className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-accent)]">
                       <FolderOpen className="h-4 w-4" />
                     </span>
-                    <span className={`app-status-chip ${projectStatusPresentation(row.project).chipClass}`}>
-                      {projectStatusPresentation(row.project).label}
-                    </span>
-                  </div>
-                  {isSyntheticProject(row.project) ? <span className="app-theme-chip">Synthetic</span> : null}
-                </div>
-
-                <div className="mt-5 min-w-0 flex-1">
+                  <div className="min-w-0">
                   <Link
                     href={`/projects/${row.project.id}`}
-                    className="block text-lg font-semibold leading-snug tracking-tight text-[var(--color-text-primary)] transition hover:text-[var(--color-accent)]"
+                    className="block truncate text-base font-semibold text-[var(--color-text-primary)] transition hover:text-[var(--color-accent)]"
                   >
                     {row.project.name}
                   </Link>
@@ -422,43 +421,27 @@ export function ProjectsPageClient({ initialProjects }: ProjectsPageClientProps)
                       #{row.project.id.slice(-8)}
                     </p>
                   ) : null}
-                  <p className="mt-3 text-sm leading-6 text-[var(--color-text-secondary)]">
+                  <p className="mt-1 line-clamp-1 text-sm text-[var(--color-text-secondary)]">
                     {isSyntheticProject(row.project)
                       ? "Governed synthetic reference project generated for end-to-end validation."
                       : "Independent assessment workspace with governed catalog, assumptions, and QA flow."}
                   </p>
-                  <p className="mt-3 inline-flex items-center gap-2 text-sm font-medium text-[var(--color-text-primary)]">
-                    <User className="h-3.5 w-3.5 text-[var(--color-accent)]" />
+                  <p className="mt-1.5 inline-flex items-center gap-1.5 truncate text-xs text-[var(--color-text-muted)]">
+                    <User className="h-3.5 w-3.5" />
                     {row.project.customer_name}
+                    {isSyntheticProject(row.project) ? <span className="app-theme-chip ml-1">Synthetic</span> : null}
                   </p>
-                </div>
-
-                <div className="mt-5 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-4">
-                  <div>
-                    <p className="app-label">Integrations</p>
-                    <p className="mt-1 text-2xl font-semibold text-[var(--color-text-primary)]">{row.rowCount}</p>
-                  </div>
-                  <div>
-                    <p className="app-label">Created</p>
-                    <p className="mt-2 text-sm font-medium text-[var(--color-text-secondary)]">
-                      {formatDate(row.project.created_at)}
-                    </p>
                   </div>
                 </div>
-
-                <div className="mt-5 flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Link href={`/projects/${row.project.id}`} className="app-link inline-flex items-center gap-1">
-                      Dashboard
-                      <ArrowRight className="h-3.5 w-3.5" />
-                    </Link>
-                    <Link
-                      href={`/projects/${row.project.id}/catalog`}
-                      className="text-sm font-medium text-[var(--color-text-secondary)] transition hover:text-[var(--color-text-primary)]"
-                    >
-                      Catalog
-                    </Link>
-                  </div>
+                <span className={`app-status-chip w-fit ${projectStatusPresentation(row.project).chipClass}`}>
+                  {projectStatusPresentation(row.project).label}
+                </span>
+                <span className="text-xl font-semibold text-[var(--color-text-primary)]">{row.rowCount}</span>
+                <span className="text-sm text-[var(--color-text-secondary)]">{formatDate(row.project.created_at)}</span>
+                <div className="flex items-center justify-end gap-2">
+                  <Link href={`/projects/${row.project.id}`} className="app-button-secondary gap-1 px-3 py-2 text-xs">
+                    Dashboard <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
                   {renderActions(row)}
                 </div>
               </article>

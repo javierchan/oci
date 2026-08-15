@@ -55,7 +55,7 @@ export function RecalculateButton({ projectId }: RecalculateButtonProps): JSX.El
       type="button"
       onClick={handleClick}
       disabled={pending}
-      className="app-button-primary h-10 w-[10.5rem] gap-2"
+      className="app-button-secondary h-10 w-[10.5rem] gap-2"
       aria-busy={pending}
     >
       <RefreshCw className={`h-4 w-4 ${pending ? "animate-spin" : ""}`} />

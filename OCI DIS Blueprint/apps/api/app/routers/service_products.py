@@ -12,6 +12,7 @@ from app.schemas.service_products import (
     ServiceVerificationFindingReviewRequest,
     ServiceInteroperabilityMatrixResponse,
     ServiceInteroperabilityRuleResponse,
+    ServiceLimitAssuranceReportResponse,
     ServiceLimitResponse,
     ServiceProductDetailResponse,
     ServiceProductListResponse,
@@ -20,10 +21,8 @@ from app.schemas.service_products import (
     ServiceVerificationRunRequest,
 )
 from app.services import service_product_service
-from app.services import agent_service
-from app.schemas.agent import AgentCreateRequest
 from app.services.authz import require_admin
-from app.workers.agent_worker import execute_agent_run_task
+from app.workers.service_verification_worker import execute_service_verification_job_task
 
 router = APIRouter(prefix="/service-products", tags=["Service Products"])
 
@@ -77,6 +76,17 @@ async def list_service_verification_alerts(
     return await service_product_service.list_verification_alerts(db, limit=limit)
 
 
+@router.get(
+    "/limit-assurance",
+    response_model=ServiceLimitAssuranceReportResponse,
+    summary="Get claim-level assurance coverage for active service limits",
+)
+async def get_service_limit_assurance(
+    db: AsyncSession = Depends(get_db),
+) -> ServiceLimitAssuranceReportResponse:
+    return await service_product_service.get_service_limit_assurance(db)
+
+
 @router.post(
     "/verification-jobs",
     response_model=ServiceVerificationJobResponse,
@@ -93,30 +103,14 @@ async def execute_service_verification_job(
     request = body or ServiceVerificationRunRequest()
     async with db.begin():
         job = await service_product_service.create_verification_job(request, actor_id, db)
-        agent_run = await agent_service.create_agent_run(
-            AgentCreateRequest(
-                agent_type="service_verification",
-                context={
-                    "verification_job_id": job.id,
-                    "request": request.model_dump(mode="json"),
-                },
-            ),
-            actor_id,
-            actor_role,
-            db,
-        )
-        await agent_service.link_agent_run(
-            agent_run.id, legacy_job_type="service_verification", legacy_job_id=job.id, db=db
-        )
     try:
-        execute_agent_run_task.apply_async(args=[agent_run.id], task_id=agent_run.id, queue="agents")
+        execute_service_verification_job_task.apply_async(
+            args=[job.id],
+            task_id=job.id,
+            queue="celery",
+        )
     except Exception as exc:  # pragma: no cover - defensive dispatch path
         async with db.begin():
-            await agent_service.mark_agent_run_failed(
-                agent_run.id,
-                {"detail": "Unable to dispatch service verification agent."},
-                db,
-            )
             await service_product_service.mark_verification_job_failed(
                 job.id,
                 {"detail": f"Unable to dispatch service verification job: {exc}"},

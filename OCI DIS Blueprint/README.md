@@ -28,7 +28,9 @@ Replaces `Catalogo_Integracion.xlsx` with a governed platform enabling architect
 - **Object storage:** MinIO locally / OCI Object Storage when deployed, through one S3-compatible artifact service
 - **Calc engine:** `packages/calc-engine/` (pure Python, no I/O)
 - **Pricing engine:** `packages/pricing-engine/` (pure Decimal calculations, no I/O)
-- **Service rules:** normalized Service Product tables; Assumptions contain client workload inputs only
+- **Service rules:** normalized Service Product tables are runtime authority;
+  claim-level evidence records prove each registered limit against one exact
+  Oracle source hash, while Assumptions contain client workload inputs only
 
 All services run in **production mode** on Docker Desktop — no host Python or
 Node.js dependencies and no source-code bind mounts.
@@ -604,6 +606,8 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M77 | OCI OKE Horizontal Scale + Observability Readiness | ⏳ Planned | — |
 | M78 | Provider-neutral Local Authentication + External API Tokens | ✅ Complete | 2026-08-14 |
 | M79 | Deployment-neutral Multi-user Consistency + Scale Preparation | ✅ Complete | 2026-08-14 |
+| M80 | Claim-level OCI Service Limit Assurance | ✅ Implemented; source coverage remediation continues | — |
+| M81 | Professional Decision-workspace UI System | ✅ Complete | 2026-08-14 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -628,7 +632,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
 - Web and API stack: all eight production services running and healthy in Docker Compose
 - M74 OCI semantic retrieval: authenticated tenancy and CLI token boundary,
   active on-demand Cohere/OpenAI embedding inventory in `us-chicago-1`, governed
-  Cohere Embed v4 selection at 512 dimensions, `307/307` committed provider
+  Cohere Embed v4 selection at 512 dimensions, `308/308` committed provider
   vectors, and completed App Assistant runs whose persisted evidence reports
   five matches in `embedding_space=provider`.
 - Pattern certification browser contract: `21/21` certified cards, `9/9` governed overlays, desktop light/dark and `390 px` mobile views, zero horizontal overflow, and zero console errors
@@ -677,7 +681,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   routine human approval. The final real-provider matrix passed `27/27` global
   cases and `4/4` Iconn project-dossier cases with provider-space retrieval,
   grounded delivery, and `fallback_used=false`; the active knowledge artifact
-  passed hash/model/dimension/coverage validation at `307/307` vectors.
+  passed hash/model/dimension/coverage validation at `308/308` vectors.
 - M76 ideal reference project: retained fictional project
   `6635ea67-c05d-44d3-aacf-19c5dd5d2bee` has `350/350` integrations at `QA = OK`,
   72 systems, 300 imported plus 50 manually captured rows, 12 excluded source
@@ -695,6 +699,21 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   passed `341` API and `142` frontend tests. Browser QA covered login, Account,
   project visibility, token create/revoke, and User Management with zero console
   warnings/errors. OCI IAM remains an additional future identity provider.
+- M80 service-limit assurance: migration head `20260814_0061` adds evidence
+  claims tied to exact Oracle source hashes, canonical limit-page assignments,
+  an honest coverage API/UI, and one deterministic manual/scheduled verifier.
+  The final Compose runtime is ready at migration `20260814_0061` with App
+  Knowledge hash `297eb2520f00` and `308/308` Cohere Embed v4 vectors. A real
+  three-source Oracle smoke confirmed `12/36` core numeric limits and reported
+  overall library coverage of `13.48%`; therefore customer-facing limit bundles
+  remain gated until their applicable rules reach 100% confirmation.
+- M81 professional UI system: Projects, Dashboard, Catalog, Map, BOM, and Agent
+  Operations now share one responsive decision hierarchy, restrained Oracle-red
+  accent, neutral table selection, progressive disclosure, consolidated shell
+  navigation, user-resizable desktop sidebar, and truthful status language. BOM
+  metric rehydration is serialized and bounded so transient concurrent reads do
+  not leave a false error. The responsive light/dark browser matrix, frontend
+  unit suite, type/lint gates, and production build passed.
 
 `AGENTS.md`, this README, the root workflow, and the current architecture
 documents define the active operational contract. Dated audit reports preserve

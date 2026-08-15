@@ -472,17 +472,18 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
                 <div><p className="app-label">Commercial Coverage</p><h3 className="mt-1 text-lg font-semibold text-[var(--color-text-primary)]">Every detected product has an explicit quote path</h3></div>
                 <span className="text-xs text-[var(--color-text-muted)]">{assistant?.commercial_coverage?.length ?? 0} products evaluated</span>
               </div>
-              <div className="mt-4 grid gap-3 lg:grid-cols-2">
+              <div className="mt-4 divide-y divide-[var(--color-border)] overflow-hidden rounded-lg border border-[var(--color-border)]">
                 {assistant?.commercial_coverage?.map((coverage) => (
-                  <div key={coverage.service_id} className={`rounded-lg border p-4 ${readinessTone(coverage.readiness)}`}>
-                    <div className="flex items-start justify-between gap-3"><div><p className="font-semibold text-[var(--color-text-primary)]">{coverage.product_name}</p><p className="mt-1 text-xs uppercase tracking-[0.12em]">{coverage.classification.replaceAll("_", " ")}</p></div><span className="rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]">{coverage.readiness.replaceAll("_", " ")}</span></div>
-                    <p className="mt-3 text-sm leading-5 text-[var(--color-text-secondary)]">{coverage.guidance}</p>
-                    <div className="mt-3 flex flex-wrap gap-2 text-xs text-[var(--color-text-muted)]">
+                  <div key={coverage.service_id} className={`grid gap-3 border-0 p-4 lg:grid-cols-[minmax(12rem,0.8fr)_minmax(0,1.5fr)_auto] lg:items-start ${readinessTone(coverage.readiness)}`}>
+                    <div><p className="font-semibold text-[var(--color-text-primary)]">{coverage.product_name}</p><p className="mt-1 text-xs uppercase tracking-[0.1em]">{coverage.classification.replaceAll("_", " ")}</p></div>
+                    <div><p className="text-sm leading-5 text-[var(--color-text-secondary)]">{coverage.guidance}</p>
+                    <div className="mt-2 flex flex-wrap gap-2 text-xs text-[var(--color-text-muted)]">
                       <span>
                         {coverage.approved_mapping_count} governed {coverage.approved_mapping_count === 1 ? "meter" : "meters"}
                       </span>
                       {coverage.dependencies_present.length ? <span>Dependencies present: {coverage.dependencies_present.join(", ")}</span> : null}
-                    </div>
+                    </div></div>
+                    <span className="w-fit rounded-md border border-current/30 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.08em]">{coverage.readiness.replaceAll("_", " ")}</span>
                   </div>
                 ))}
               </div>
@@ -504,14 +505,18 @@ export function BomWorkspace({ projectId, projectName }: { projectId: string; pr
           <div className="mt-5 flex flex-wrap gap-2"><button className="app-button-primary gap-2" type="button" disabled={!draft || busyAction !== null || !planReadiness.ready} onClick={() => void createScenario()}>{busyAction === "create-scenario" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}Save new scenario</button><button className="app-button-secondary gap-2" type="button" disabled={!selectedScenario || selectedScenario.status === "approved" || busyAction !== null} onClick={() => void approveScenario()}>{busyAction === "approve-scenario" ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}Approve selected</button></div>
         </div>
 
-        <aside className="app-card min-w-0 p-5">
-          <div className="flex items-start justify-between gap-3"><div><p className="app-label">BOM Decision Assistant</p><h2 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">What this scenario means</h2></div><span className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">{assistant?.confidence ?? "unavailable"} confidence</span></div>
+        <aside className="app-card min-w-0 self-start p-5 xl:sticky xl:top-20 xl:max-h-[calc(100vh-6.5rem)] xl:overflow-y-auto">
+          <div className="flex items-start justify-between gap-3"><div><p className="app-label">Governed decision</p><h2 className="mt-2 text-lg font-semibold text-[var(--color-text-primary)]">Scenario status and next action</h2></div><span className="console-pill">{assistant?.confidence ?? "unavailable"} confidence</span></div>
           {assistant?.current_bom ? <div className={`mt-4 rounded-lg border p-4 ${assistant.current_bom.ready_for_use ? "border-emerald-400/45 bg-emerald-500/5" : "border-amber-400/45 bg-amber-500/5"}`}>
             <div className="flex flex-wrap items-start justify-between gap-3"><div><p className="app-label">Current governed BOM</p><h3 className="mt-1 font-semibold text-[var(--color-text-primary)]">{assistant.current_bom.scenario_name}</h3></div><span className="rounded-full border border-current/30 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.1em]">{assistant.current_bom.ready_for_use ? "Published and current" : "Review required"}</span></div>
             <p className="mt-3 text-sm leading-5 text-[var(--color-text-secondary)]">{assistant.current_bom.coverage_pct}% coverage across {assistant.current_bom.line_item_count} line items in {assistant.current_bom.environment_names.join(", ") || "the approved environment plan"}. Contract total: {assistant.current_bom.currency} {assistant.current_bom.contract_total.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}.</p>
           </div> : null}
           <div className="mt-4 rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] p-4">{assistant?.ai_summary ? <GovernedNarrative content={assistant.ai_summary} compact /> : <p className="text-sm leading-6 text-[var(--color-text-secondary)]">Deterministic scenario evidence is ready. OCI Generative AI can explain it, but never changes governed quantities, prices, or totals.</p>}</div>
-          <p className="app-label mt-5">Products represented</p><p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">These OCI products were resolved from the governed architecture and scenario.</p><div className="mt-2 flex flex-wrap gap-2">{assistant?.detected_services.map((service) => <span key={service} className="rounded-full border border-[var(--color-border)] px-2.5 py-1 text-xs font-semibold text-[var(--color-text-secondary)]">{service}</span>)}</div>
+          <details className="mt-5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3">
+            <summary className="cursor-pointer text-sm font-semibold text-[var(--color-text-primary)]">Products represented ({assistant?.detected_services.length ?? 0})</summary>
+            <p className="mt-2 text-xs leading-5 text-[var(--color-text-muted)]">Resolved from the governed architecture and scenario.</p>
+            <div className="mt-3 flex flex-wrap gap-2">{assistant?.detected_services.map((service) => <span key={service} className="app-theme-chip">{service}</span>)}</div>
+          </details>
           {assistant?.required_questions.length ? <><p className="app-label mt-5">What the client still needs to confirm</p><ol className="mt-2 space-y-2">{assistant.required_questions.map((question, index) => <li key={question} className="flex gap-2 text-sm leading-5 text-[var(--color-text-secondary)]"><span className="font-mono text-[var(--color-accent)]">{index + 1}.</span>{question}</li>)}</ol></> : <div className="mt-5 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] p-3"><p className="text-sm font-semibold text-[var(--color-text-primary)]">No blocking client inputs</p><p className="mt-1 text-xs leading-5 text-[var(--color-text-muted)]">The current published baseline is complete. Create an alternative only when a governed architecture or rollout input changes.</p></div>}
           {assistant?.warnings.length ? <div className="mt-4 rounded-lg border border-amber-400/45 p-3 text-sm text-amber-700 dark:text-amber-300"><p className="mb-2 font-semibold"><AlertTriangle className="mr-2 inline h-4 w-4" />Why the estimate needs review</p>{assistant.warnings.join(" ")}</div> : null}
         </aside>

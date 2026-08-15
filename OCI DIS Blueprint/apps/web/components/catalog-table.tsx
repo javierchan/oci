@@ -457,10 +457,10 @@ export function CatalogTable({
         ) : null}
 
         <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-[var(--color-border)] pt-4">
-          <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[var(--color-text-secondary)]">
-            <Bookmark className="h-3.5 w-3.5" />
-            Working views
-          </span>
+          <div className="mr-2 inline-flex items-center gap-2 border-r border-[var(--color-border)] pr-4">
+            <Bookmark className="h-3.5 w-3.5 text-[var(--color-text-muted)]" />
+            <span className="text-xs font-semibold text-[var(--color-text-secondary)]">Views</span>
+          </div>
           <button
             type="button"
             onClick={() => applySavedView({ id: "review", label: "QA review", search: "", qaStatus: "REVISAR", pattern: "", brand: "" })}
@@ -475,6 +475,17 @@ export function CatalogTable({
           >
             Needs data
           </button>
+          {savedViews.map((view) => (
+            <span key={view.id} className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] text-xs">
+              <button type="button" onClick={() => applySavedView(view)} className="px-2.5 py-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
+                {view.label}
+              </button>
+              <button type="button" onClick={() => void removeSavedView(view.id)} className="border-l border-[var(--color-border)] px-1.5 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]" aria-label={`Remove ${view.label}`}>
+                <Trash2 className="h-3 w-3" />
+              </button>
+            </span>
+          ))}
+          <div className="ml-auto flex flex-wrap items-center gap-2 border-l border-[var(--color-border)] pl-4">
           <button
             type="button"
             onClick={() => void saveCurrentView()}
@@ -493,17 +504,8 @@ export function CatalogTable({
             {shared ? <Check className="h-3.5 w-3.5" /> : <Share2 className="h-3.5 w-3.5" />}
             {shared ? "Copied" : "Share view"}
           </button>
-          {savedViews.map((view) => (
-            <span key={view.id} className="inline-flex items-center rounded-md border border-[var(--color-border)] bg-[var(--color-surface-2)] text-xs">
-              <button type="button" onClick={() => applySavedView(view)} className="px-2.5 py-1.5 text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
-                {view.label}
-              </button>
-              <button type="button" onClick={() => void removeSavedView(view.id)} className="border-l border-[var(--color-border)] px-1.5 py-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]" aria-label={`Remove ${view.label}`}>
-                <Trash2 className="h-3 w-3" />
-              </button>
-            </span>
-          ))}
-          <p className="ml-auto text-xs text-[var(--color-text-muted)]">The URL updates with each filter so a view can be shared.</p>
+          </div>
+          <p className="w-full text-right text-xs text-[var(--color-text-muted)]">Filters are reflected in the URL for a shareable governed view.</p>
         </div>
 
         {error ? <p className="mt-4 text-sm text-rose-600">{error}</p> : null}
@@ -683,9 +685,10 @@ export function CatalogTable({
                         className={[
                           "app-table-row group cursor-pointer border-l-2 text-sm transition",
                           selectedIntegration?.id === integration.id
-                            ? "border-[var(--accent)] bg-[var(--accent-soft)]"
+                            ? "border-[var(--selection-border)]"
                             : "border-transparent hover:border-[var(--accent)]",
                         ].join(" ")}
+                        data-selected={selectedIntegration?.id === integration.id ? "true" : "false"}
                       >
                         <td className="px-3 py-3 font-medium text-[var(--color-text-primary)]">
                           {integration.seq_number}

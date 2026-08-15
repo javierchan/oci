@@ -17435,6 +17435,287 @@
         "title": "ServiceInteroperabilityRuleResponse",
         "type": "object"
       },
+      "ServiceLimitAssuranceItemResponse": {
+        "additionalProperties": false,
+        "description": "Current claim-level assurance state for one active governed limit.",
+        "properties": {
+          "assurance_status": {
+            "title": "Assurance Status",
+            "type": "string"
+          },
+          "constraint_kind": {
+            "title": "Constraint Kind",
+            "type": "string"
+          },
+          "enforcement": {
+            "title": "Enforcement",
+            "type": "string"
+          },
+          "evidence_excerpt": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Excerpt"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limit_id": {
+            "title": "Limit Id",
+            "type": "string"
+          },
+          "limit_key": {
+            "title": "Limit Key",
+            "type": "string"
+          },
+          "parser_version": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parser Version"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "source_content_hash": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Content Hash"
+          },
+          "source_status": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Status"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "title": "Value"
+          },
+          "verified_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verified At"
+          }
+        },
+        "required": [
+          "service_id",
+          "service_name",
+          "limit_id",
+          "limit_key",
+          "label",
+          "value",
+          "unit",
+          "constraint_kind",
+          "enforcement",
+          "assurance_status",
+          "source_url",
+          "source_status",
+          "source_content_hash",
+          "verified_at",
+          "parser_version",
+          "evidence_excerpt"
+        ],
+        "title": "ServiceLimitAssuranceItemResponse",
+        "type": "object"
+      },
+      "ServiceLimitAssuranceReportResponse": {
+        "additionalProperties": false,
+        "description": "Library-wide assurance report for the active runtime service-limit set.",
+        "properties": {
+          "active_limits": {
+            "title": "Active Limits",
+            "type": "integer"
+          },
+          "confirmed_limits": {
+            "title": "Confirmed Limits",
+            "type": "integer"
+          },
+          "conflict_limits": {
+            "title": "Conflict Limits",
+            "type": "integer"
+          },
+          "coverage_pct": {
+            "title": "Coverage Pct",
+            "type": "number"
+          },
+          "generated_at": {
+            "format": "date-time",
+            "title": "Generated At",
+            "type": "string"
+          },
+          "limits": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceLimitAssuranceItemResponse"
+            },
+            "title": "Limits",
+            "type": "array"
+          },
+          "non_numeric_rules": {
+            "title": "Non Numeric Rules",
+            "type": "integer"
+          },
+          "not_located_limits": {
+            "title": "Not Located Limits",
+            "type": "integer"
+          },
+          "services": {
+            "items": {
+              "$ref": "#/components/schemas/ServiceLimitAssuranceServiceResponse"
+            },
+            "title": "Services",
+            "type": "array"
+          },
+          "source_attention_limits": {
+            "title": "Source Attention Limits",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "unverified_limits": {
+            "title": "Unverified Limits",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "generated_at",
+          "status",
+          "active_limits",
+          "non_numeric_rules",
+          "confirmed_limits",
+          "conflict_limits",
+          "not_located_limits",
+          "unverified_limits",
+          "source_attention_limits",
+          "coverage_pct",
+          "services",
+          "limits"
+        ],
+        "title": "ServiceLimitAssuranceReportResponse",
+        "type": "object"
+      },
+      "ServiceLimitAssuranceServiceResponse": {
+        "additionalProperties": false,
+        "description": "Coverage summary for one governed service product.",
+        "properties": {
+          "active_limits": {
+            "title": "Active Limits",
+            "type": "integer"
+          },
+          "confirmed_limits": {
+            "title": "Confirmed Limits",
+            "type": "integer"
+          },
+          "conflict_limits": {
+            "title": "Conflict Limits",
+            "type": "integer"
+          },
+          "coverage_pct": {
+            "title": "Coverage Pct",
+            "type": "number"
+          },
+          "non_numeric_rules": {
+            "title": "Non Numeric Rules",
+            "type": "integer"
+          },
+          "not_located_limits": {
+            "title": "Not Located Limits",
+            "type": "integer"
+          },
+          "service_id": {
+            "title": "Service Id",
+            "type": "string"
+          },
+          "service_name": {
+            "title": "Service Name",
+            "type": "string"
+          },
+          "source_attention_limits": {
+            "title": "Source Attention Limits",
+            "type": "integer"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "unverified_limits": {
+            "title": "Unverified Limits",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "service_id",
+          "service_name",
+          "active_limits",
+          "non_numeric_rules",
+          "confirmed_limits",
+          "conflict_limits",
+          "not_located_limits",
+          "unverified_limits",
+          "source_attention_limits",
+          "coverage_pct",
+          "status"
+        ],
+        "title": "ServiceLimitAssuranceServiceResponse",
+        "type": "object"
+      },
       "ServiceLimitResponse": {
         "additionalProperties": false,
         "description": "Normalized service limit or operational constraint.",
@@ -31447,6 +31728,27 @@
           }
         },
         "summary": "List governed service products",
+        "tags": [
+          "Service Products"
+        ]
+      }
+    },
+    "/api/v1/service-products/limit-assurance": {
+      "get": {
+        "operationId": "get_service_limit_assurance_api_v1_service_products_limit_assurance_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServiceLimitAssuranceReportResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Get claim-level assurance coverage for active service limits",
         "tags": [
           "Service Products"
         ]

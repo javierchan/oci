@@ -46,6 +46,7 @@ mistake a Docker-local capability for an OCI production capability.
 | Integration recommendation | [Integration Recommendation Workspace](./integration-recommendation-workspace.md) | Implemented locally |
 | Offline capture | [Offline Capture Workbook v3](./offline-capture-workbook-v3.md) | Implemented locally |
 | Pattern governance | [Pattern Certification Matrix](./pattern-certification-matrix.md) | Implemented locally |
+| Service limits and documentary assurance | [Governed Service Limit Assurance](./service-limit-assurance.md) | Implemented locally |
 | Synthetic reference data | [Admin Synthetic Lab](./admin-synthetic-lab.md) | Implemented locally |
 
 ## Architecture governance

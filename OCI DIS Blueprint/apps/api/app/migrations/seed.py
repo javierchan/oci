@@ -2103,7 +2103,19 @@ def _humanize_limit_key(key: str) -> str:
     return key.replace("_", " ").strip().title()
 
 
-def _infer_limit_unit(key: str, value: object) -> str | None:
+LIMIT_UNIT_OVERRIDES = {
+    ("QUEUE", "ingress_throughput_mb_s_per_queue"): "MB/s",
+    ("QUEUE", "egress_throughput_mb_s_per_queue"): "MB/s",
+    ("QUEUE", "max_concurrent_get_rps"): "requests/s",
+    ("QUEUE", "max_message_ops_per_s_per_api_per_queue"): "requests/s",
+    ("STREAMING", "write_throughput_mb_s_per_partition"): "MB/s",
+    ("STREAMING", "get_requests_per_s_per_consumer_group_per_partition"): "requests/s",
+}
+
+
+def _infer_limit_unit(service_id: str, key: str, value: object) -> str | None:
+    if (service_id, key) in LIMIT_UNIT_OVERRIDES:
+        return LIMIT_UNIT_OVERRIDES[(service_id, key)]
     if key.endswith("_kb"):
         return "KB"
     if key.endswith("_mb") or "_mb_" in key:
@@ -2326,19 +2338,32 @@ OIC_BILLING_URL = (
     "https://docs.oracle.com/en-us/iaas/application-integration/doc/"
     "how-billing-message-usage-is-calculated-based-feature.html"
 )
+API_GATEWAY_LIMITS_URL = (
+    "https://docs.oracle.com/en-us/iaas/Content/APIGateway/Reference/"
+    "apigatewaylimits.htm"
+)
+STREAMING_LIMITS_URL = (
+    "https://docs.oracle.com/en-us/iaas/Content/Streaming/Concepts/"
+    "streamingoverview_topic-Limits_on_Streaming_Resources.htm"
+)
+QUEUE_LIMITS_URL = "https://docs.oracle.com/en-us/iaas/Content/queue/overview.htm"
 
 
 def _limit_source_url(service_id: str, key: str, fallback: str | None) -> str | None:
-    """Bind governed OIC variables to the Oracle page that defines their semantics."""
+    """Bind governed variables to the narrowest registered Oracle limit page."""
 
-    if service_id != "OIC3":
-        return fallback
-    if key == "billing_threshold_kb":
-        return OIC_BILLING_URL
-    applicability = OIC_LIMIT_GOVERNANCE.get(key, (None, None, None, {}))[3]
-    if "adapter" in applicability:
-        return OIC_ADAPTER_LIMITS_URL
-    return OIC_SERVICE_LIMITS_URL
+    if service_id == "OIC3":
+        if key == "billing_threshold_kb":
+            return OIC_BILLING_URL
+        applicability = OIC_LIMIT_GOVERNANCE.get(key, (None, None, None, {}))[3]
+        if "adapter" in applicability:
+            return OIC_ADAPTER_LIMITS_URL
+        return OIC_SERVICE_LIMITS_URL
+    return {
+        "API_GATEWAY": API_GATEWAY_LIMITS_URL,
+        "STREAMING": STREAMING_LIMITS_URL,
+        "QUEUE": QUEUE_LIMITS_URL,
+    }.get(service_id, fallback)
 
 
 def _infer_limit_governance(
@@ -2441,7 +2466,7 @@ def seed_service_product_library(session: Session) -> int:
                     enforcement=enforcement,
                     applicability=applicability,
                     value=value,
-                    unit=_infer_limit_unit(key, value),
+                    unit=_infer_limit_unit(profile.service_id, key, value),
                     can_request_increase=_can_request_limit_increase(key),
                     source_url=_limit_source_url(profile.service_id, key, first_source_url),
                     confidence=0.9 if first_source_url else 0.75,

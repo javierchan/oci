@@ -2,7 +2,6 @@
 
 import { notFound } from "next/navigation";
 
-import { Breadcrumb } from "@/components/breadcrumb";
 import { CatalogTable } from "@/components/catalog-table";
 import { api } from "@/lib/api";
 import { isProjectNotFoundError } from "@/lib/project-errors";
@@ -71,16 +70,6 @@ export default async function ProjectCatalogPage({
         <p className="mt-3 max-w-2xl text-sm leading-6 text-[var(--color-text-secondary)]">
           Review imported rows in source order, filter by QA status or assigned pattern, and select a row to inspect it in the side drawer without losing catalog context.
         </p>
-        <div className="mt-4">
-          <Breadcrumb
-            items={[
-              { label: "Home", href: "/projects" },
-              { label: "Projects", href: "/projects" },
-              { label: project.name, href: `/projects/${projectId}` },
-              { label: "Catalog" },
-            ]}
-          />
-        </div>
       </section>
       <CatalogTable
         projectId={projectId}

@@ -4,7 +4,6 @@ import { BadgeDollarSign } from "lucide-react";
 import { notFound } from "next/navigation";
 
 import { BomWorkspace } from "@/components/bom-workspace";
-import { Breadcrumb } from "@/components/breadcrumb";
 import { api } from "@/lib/api";
 import { isProjectNotFoundError } from "@/lib/project-errors";
 
@@ -31,7 +30,6 @@ export default async function ProjectBomPage({ params }: ProjectBomPageProps): P
             <p className="app-kicker">Commercial Workspace · Governed Estimate</p>
             <h1 className="mt-2 text-4xl font-semibold tracking-tight text-[var(--color-text-primary)]">BOM &amp; Cost</h1>
             <p className="mt-3 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">Build a deployment-aware OCI estimate for {project.name} from approved technical demand, price evidence, and SKU mappings.</p>
-            <div className="mt-4"><Breadcrumb items={[{ label: "Home", href: "/projects" }, { label: "Projects", href: "/projects" }, { label: project.name, href: `/projects/${projectId}` }, { label: "BOM & Cost" }]} /></div>
           </div>
         </div>
       </section>

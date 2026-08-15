@@ -1644,6 +1644,54 @@ export interface ServiceProductList {
   open_findings_count: number;
 }
 
+export interface ServiceLimitAssuranceItem {
+  service_id: string;
+  service_name: string;
+  limit_id: string;
+  limit_key: string;
+  label: string;
+  value: unknown;
+  unit: string | null;
+  constraint_kind: string;
+  enforcement: string;
+  assurance_status: string;
+  source_url: string | null;
+  source_status: string | null;
+  source_content_hash: string | null;
+  verified_at: string | null;
+  parser_version: string | null;
+  evidence_excerpt: string | null;
+}
+
+export interface ServiceLimitAssuranceService {
+  service_id: string;
+  service_name: string;
+  active_limits: number;
+  non_numeric_rules: number;
+  confirmed_limits: number;
+  conflict_limits: number;
+  not_located_limits: number;
+  unverified_limits: number;
+  source_attention_limits: number;
+  coverage_pct: number;
+  status: string;
+}
+
+export interface ServiceLimitAssuranceReport {
+  generated_at: string;
+  status: string;
+  active_limits: number;
+  non_numeric_rules: number;
+  confirmed_limits: number;
+  conflict_limits: number;
+  not_located_limits: number;
+  unverified_limits: number;
+  source_attention_limits: number;
+  coverage_pct: number;
+  services: ServiceLimitAssuranceService[];
+  limits: ServiceLimitAssuranceItem[];
+}
+
 export interface ServiceInteroperabilityMatrix {
   services: ServiceProductSummary[];
   rules: ServiceInteroperabilityRule[];

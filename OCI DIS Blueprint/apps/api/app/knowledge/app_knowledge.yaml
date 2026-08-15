@@ -223,13 +223,14 @@ sections:
       - /admin/synthetic/[jobId]
     endpoints:
       - { method: GET, path: /api/v1/service-products }
+      - { method: GET, path: /api/v1/service-products/limit-assurance }
       - { method: GET, path: "/api/v1/service-products/{service_id}" }
       - { method: GET, path: "/api/v1/service-products/{service_id}/limits" }
       - { method: GET, path: "/api/v1/service-products/{service_id}/interoperability" }
       - { method: GET, path: /api/v1/admin/synthetic/jobs }
     exports: []
-    entities: [ServiceCapabilityProfile, ServiceProductVersion, ServiceLimit, ServiceInteroperabilityRule, SyntheticGenerationJob]
-    supported_actions: [open governance category, inspect service evidence, inspect limits, inspect interoperability, run synthetic validation]
+    entities: [ServiceCapabilityProfile, ServiceProductVersion, ServiceLimit, ServiceLimitEvidenceClaim, ServiceInteroperabilityRule, SyntheticGenerationJob]
+    supported_actions: [open governance category, inspect service evidence, inspect claim-level limit assurance, inspect limits, inspect interoperability, run synthetic validation]
     unsupported_claims: [edit Oracle public documentation, deploy a Service Product directly]
     keywords: [library, biblioteca, service product, service products, producto de servicio, productos OCI, limits, límites, interoperability, interoperabilidad, synthetic lab, governance, gobierno]
 

@@ -248,6 +248,66 @@ class ServiceVerificationAlertListResponse(BaseModel):
     stale_evidence_count: int
 
 
+class ServiceLimitAssuranceItemResponse(BaseModel):
+    """Current claim-level assurance state for one active governed limit."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    service_id: str
+    service_name: str
+    limit_id: str
+    limit_key: str
+    label: str
+    value: Any
+    unit: Optional[str]
+    constraint_kind: str
+    enforcement: str
+    assurance_status: str
+    source_url: Optional[str]
+    source_status: Optional[str]
+    source_content_hash: Optional[str]
+    verified_at: Optional[datetime]
+    parser_version: Optional[str]
+    evidence_excerpt: Optional[str]
+
+
+class ServiceLimitAssuranceServiceResponse(BaseModel):
+    """Coverage summary for one governed service product."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    service_id: str
+    service_name: str
+    active_limits: int
+    non_numeric_rules: int
+    confirmed_limits: int
+    conflict_limits: int
+    not_located_limits: int
+    unverified_limits: int
+    source_attention_limits: int
+    coverage_pct: float
+    status: str
+
+
+class ServiceLimitAssuranceReportResponse(BaseModel):
+    """Library-wide assurance report for the active runtime service-limit set."""
+
+    model_config = ConfigDict(strict=True, extra="forbid")
+
+    generated_at: datetime
+    status: str
+    active_limits: int
+    non_numeric_rules: int
+    confirmed_limits: int
+    conflict_limits: int
+    not_located_limits: int
+    unverified_limits: int
+    source_attention_limits: int
+    coverage_pct: float
+    services: list[ServiceLimitAssuranceServiceResponse]
+    limits: list[ServiceLimitAssuranceItemResponse]
+
+
 class ServiceVerificationRunRequest(BaseModel):
     """Request to execute source verification for selected service products."""
 

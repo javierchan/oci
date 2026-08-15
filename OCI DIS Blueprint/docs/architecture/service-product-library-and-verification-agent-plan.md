@@ -4,6 +4,11 @@
 runtime source for limits and interoperability. Assumptions now contain client
 workload inputs only, and migration `20260710_0014` removes duplicated service keys.
 
+**Assurance amendment (2026-08-14):** migrations `20260814_0058`–`20260814_0061` add
+claim-level proof and an honest coverage report. The executable responsibility
+boundary and closed decisions are defined in
+[Governed Service Limit Assurance](./service-limit-assurance.md).
+
 ## Objective
 
 Move OCI service-product knowledge out of generic assumptions and into a governed, verifiable product library for data integration architecture. The library should describe each service, its role in integration patterns, interoperability, limits, operational constraints, evidence sources, and verification freshness.
@@ -658,10 +663,15 @@ End-to-end:
 - OCI Streaming limits.
 - OCI Functions limits and payload limits.
 
-## Open Decisions
+## Closed Decisions
 
-- Whether to store source snapshots or only structured claims plus hashes.
-- Whether verification schedule should be enabled in production by default or kept opt-in via `SERVICE_VERIFICATION_SCHEDULE_ENABLED`.
-- Whether tenant-specific OCI quota overrides should live in project settings or assumption sets.
-- Whether to include non-Oracle products is deferred; current scope is Oracle-only.
-- Whether the verification agent should use browser-based extraction, HTTP-only fetch, or curated adapters per source.
+- Persist bounded structured claims, exact source hashes, locators, and excerpts;
+  do not retain full source pages by default.
+- Enable scheduled verification by default through
+  `SERVICE_VERIFICATION_SCHEDULE_ENABLED`, with a Redis lease preventing overlap.
+- Keep the global documented baseline separate from future project/deployment
+  tenant quota overrides; neither belongs in client workload assumptions.
+- Keep the current registry Oracle-only and restrict retrieval to Oracle-controlled
+  allowlisted hosts.
+- Use HTTP retrieval as the baseline adapter. Any future browser or curated adapter
+  must publish through the same claim-level assurance contract.

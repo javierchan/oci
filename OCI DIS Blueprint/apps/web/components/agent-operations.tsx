@@ -160,7 +160,9 @@ export function AgentOperations({
             </div>
           </div>
         </div>
-        <span className="app-theme-chip">{providerStatus.function_calling_available ? "Function calling ready" : "Deterministic fallback"}</span>
+        <span className={providerStatus.function_calling_available ? "app-status-chip active" : "app-button-danger"}>
+          {providerStatus.function_calling_available ? "Function calling ready" : "Provider unavailable"}
+        </span>
       </section>
       <section aria-label="OCI provider telemetry" className="app-table-shell p-5">
         <div className="flex flex-wrap items-end justify-between gap-3">
@@ -168,7 +170,7 @@ export function AgentOperations({
             <p className="app-label">Provider telemetry</p>
             <h2 className="mt-1 text-xl font-semibold text-[var(--color-text-primary)]">Resilience and safety signals</h2>
           </div>
-          <span className="app-theme-chip">{metrics.source === "redis" ? "Shared runtime" : "Process fallback"}</span>
+          <span className="console-pill">Live counters · {metrics.source === "redis" ? "Shared runtime" : "Process fallback"}</span>
         </div>
         <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           {[
@@ -237,23 +239,32 @@ export function AgentOperations({
         ) : null}
       </section>
       <section className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-        {definitions.map((definition) => (
-          <article key={definition.type} className="app-card p-5">
+        {definitions.map((definition) => {
+          const latestRun = runs.find((run) => run.agent_type === definition.type);
+          return (
+          <article key={definition.type} className="app-card flex min-h-[15rem] flex-col p-5">
             <div className="flex items-start justify-between gap-3">
               <span className="inline-flex h-10 w-10 items-center justify-center rounded-lg bg-[var(--color-surface-2)] text-[var(--color-accent)]">
                 <Bot className="h-5 w-5" />
               </span>
-              <span className="app-theme-chip">v{definition.version}</span>
+              <div className="flex items-center gap-2"><span className="app-status-chip active">Governed</span><span className="console-pill">v{definition.version}</span></div>
             </div>
             <h2 className="mt-4 text-lg font-semibold text-[var(--color-text-primary)]">{definition.name}</h2>
             <p className="mt-2 text-sm leading-6 text-[var(--color-text-secondary)]">{definition.description}</p>
-            <p className="mt-4 text-xs font-semibold uppercase tracking-[0.12em] text-[var(--color-text-muted)]">{definition.location}</p>
-            <div className="mt-3 flex flex-wrap gap-2">
-              {definition.tools.map((tool) => <span key={tool} className="app-theme-chip font-mono text-[10px]">{tool}</span>)}
-              <span className="app-theme-chip">{definition.model}</span>
-            </div>
+            <dl className="mt-4 grid grid-cols-2 gap-3 border-t border-[var(--color-border)] pt-4 text-xs">
+              <div><dt className="app-label">Scope</dt><dd className="mt-1 leading-5 text-[var(--color-text-secondary)]">{definition.location}</dd></div>
+              <div><dt className="app-label">Last execution</dt><dd className="mt-1 font-semibold text-[var(--color-text-primary)]">{latestRun ? formatDate(latestRun.created_at) : "No retained run"}</dd></div>
+            </dl>
+            <details className="mt-auto pt-4">
+              <summary className="cursor-pointer text-xs font-semibold text-[var(--color-accent)]">Tools and model</summary>
+              <div className="mt-3 flex flex-wrap gap-2">
+                {definition.tools.map((tool) => <span key={tool} className="app-theme-chip font-mono text-[10px]">{tool}</span>)}
+                <span className="app-theme-chip">{definition.model}</span>
+              </div>
+            </details>
           </article>
-        ))}
+          );
+        })}
       </section>
 
       <section aria-label="App knowledge governance" className="app-table-shell">

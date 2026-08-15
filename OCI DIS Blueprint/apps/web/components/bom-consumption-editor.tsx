@@ -100,6 +100,24 @@ function basisLabel(basis: string): string {
   return labels[basis] ?? basis.replaceAll("_", " ");
 }
 
+async function loadMetricOptions(
+  projectId: string,
+  serviceId: string,
+): Promise<ScenarioMetricOption[]> {
+  let lastError: unknown = null;
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      return await api.getSelectableOciProductMetrics(projectId, serviceId);
+    } catch (error) {
+      lastError = error;
+      if (attempt === 0) {
+        await new Promise((resolve) => window.setTimeout(resolve, 250));
+      }
+    }
+  }
+  throw lastError;
+}
+
 export function BomConsumptionEditor({
   projectId,
   contractMonths,
@@ -156,23 +174,45 @@ export function BomConsumptionEditor({
   }, [allMetricOptions]);
 
   useEffect(() => {
-    const plannedServiceIds = new Set(
-      environments.flatMap((environment) => environment.phases.map((phase) => phase.service_id).filter(Boolean)),
+    const plannedServiceIds = new Set<string>(
+      environments.flatMap((environment) => environment.phases
+        .map((phase) => phase.service_id)
+        .filter((serviceId): serviceId is string => typeof serviceId === "string" && serviceId.length > 0)),
     );
     const loadedServiceIds = new Set(allMetricOptions.map((option) => option.service_id));
-    for (const serviceId of plannedServiceIds) {
-      if (!serviceId || loadedServiceIds.has(serviceId) || rehydratingServices.current.has(serviceId)) continue;
-      rehydratingServices.current.add(serviceId);
-      void api.getSelectableOciProductMetrics(projectId, serviceId)
-        .then((options) => {
-          setSupplementalMetricOptions((current) => [...current, ...options]);
-          setRehydrationError("");
-        })
-        .catch((error: unknown) => {
-          setRehydrationError(getErrorMessage(error, `Commercial details for ${serviceId} could not be restored.`));
-        })
-        .finally(() => rehydratingServices.current.delete(serviceId));
-    }
+    const missingServiceIds = [...plannedServiceIds].filter(
+      (serviceId) => !loadedServiceIds.has(serviceId) && !rehydratingServices.current.has(serviceId),
+    );
+    if (missingServiceIds.length === 0) return undefined;
+
+    let cancelled = false;
+    missingServiceIds.forEach((serviceId) => rehydratingServices.current.add(serviceId));
+    void (async () => {
+      const restored: ScenarioMetricOption[] = [];
+      const failures: string[] = [];
+      for (const serviceId of missingServiceIds) {
+        try {
+          restored.push(...await loadMetricOptions(projectId, serviceId));
+        } catch (error) {
+          failures.push(`${serviceId}: ${getErrorMessage(error, "request failed")}`);
+        } finally {
+          rehydratingServices.current.delete(serviceId);
+        }
+      }
+      if (cancelled) return;
+      if (restored.length > 0) {
+        setSupplementalMetricOptions((current) => [...current, ...restored]);
+      }
+      setRehydrationError(
+        failures.length > 0
+          ? `Commercial details could not be restored for ${failures.join("; ")}.`
+          : "",
+      );
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, [allMetricOptions, environments, projectId]);
 
   useEffect(() => {

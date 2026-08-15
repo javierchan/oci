@@ -2,17 +2,29 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 from httpx import AsyncClient
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncEngine, AsyncSession, async_sessionmaker
 
-from app.migrations.seed import SERVICE_INTEROPERABILITY_RULES, SERVICE_PROFILES
+from app.migrations.seed import (
+    API_GATEWAY_LIMITS_URL,
+    QUEUE_LIMITS_URL,
+    SERVICE_INTEROPERABILITY_RULES,
+    SERVICE_PROFILES,
+    STREAMING_LIMITS_URL,
+    _infer_limit_unit,
+    _limit_source_url,
+)
 from app.models import (
     ServiceCapabilityProfile,
     ServiceEvidenceSource,
     ServiceVerificationFinding,
     ServiceInteroperabilityRule,
     ServiceLimit,
+    ServiceLimitEvidenceClaim,
     ServiceProductVersion,
     ServiceVerificationJob,
 )
@@ -62,6 +74,83 @@ def test_seed_service_products_cover_oracle_data_integration_portfolio() -> None
     oic_docs = str(oic_profile["oracle_docs_urls"])
     assert "message-pack-usage-synchronous-requests.html" in oic_docs
     assert "message-pack-usage-and-synchronous-requests.html" not in oic_docs
+
+
+def test_core_numeric_rules_bind_to_canonical_limit_pages() -> None:
+    """Do not assign numeric limits to broad product landing pages."""
+
+    assert _limit_source_url("API_GATEWAY", "max_request_body_kb", "fallback") == API_GATEWAY_LIMITS_URL
+    assert _limit_source_url("STREAMING", "max_message_size_kb", "fallback") == STREAMING_LIMITS_URL
+    assert _limit_source_url("QUEUE", "max_message_size_kb", "fallback") == QUEUE_LIMITS_URL
+    assert _infer_limit_unit("QUEUE", "max_message_ops_per_s_per_api_per_queue", 1000) == "requests/s"
+    assert _infer_limit_unit("STREAMING", "write_throughput_mb_s_per_partition", 1) == "MB/s"
+
+
+def test_claim_parser_handles_canonical_queue_labels_and_rate_units() -> None:
+    source = ServiceEvidenceSource(
+        service_profile_id="queue-profile",
+        url=QUEUE_LIMITS_URL,
+        title="Queue limits",
+        status="verified",
+    )
+    limits = [
+        ServiceLimit(
+            id="queues",
+            service_profile_id="queue-profile",
+            limit_key="max_queues_per_tenancy_per_region",
+            label="Max Queues Per Tenancy Per Region",
+            value=10,
+            constraint_kind="adjustable_quota",
+            enforcement="warn",
+        ),
+        ServiceLimit(
+            id="message-ops",
+            service_profile_id="queue-profile",
+            limit_key="max_message_ops_per_s_per_api_per_queue",
+            label="Max Message Ops Per S Per Api Per Queue",
+            value=1000,
+            unit="requests/s",
+            constraint_kind="adjustable_quota",
+            enforcement="warn",
+        ),
+        ServiceLimit(
+            id="ingress",
+            service_profile_id="queue-profile",
+            limit_key="ingress_throughput_mb_s_per_queue",
+            label="Ingress Throughput Mb S Per Queue",
+            value=10,
+            unit="MB/s",
+            constraint_kind="informational",
+            enforcement="inform",
+        ),
+        ServiceLimit(
+            id="retention",
+            service_profile_id="queue-profile",
+            limit_key="retention_max_d",
+            label="Retention Max D",
+            value=7,
+            unit="days",
+            constraint_kind="adjustable_quota",
+            enforcement="warn",
+        ),
+    ]
+    claims = service_product_service._extract_limit_claims(
+        (
+            "Queues 10 per tenancy per region. Maximum message operations 1,000 requests per second per API. "
+            "Maximum data rate. Ingress per queue: 10 MB/s. Message retention Maximum: 7 days."
+        ),
+        limits,
+        source,
+        datetime.now(UTC),
+    )
+
+    assert {claim["limit_id"] for claim in claims} == {
+        "queues",
+        "message-ops",
+        "ingress",
+        "retention",
+    }
+    assert {claim["match_status"] for claim in claims} == {"confirmed"}
 
 
 @pytest.mark.asyncio
@@ -332,7 +421,11 @@ async def test_service_verification_job_dispatches_async_worker(
         dispatched["task_id"] = task_id
         dispatched["queue"] = queue
 
-    monkeypatch.setattr(service_products_router.execute_agent_run_task, "apply_async", fake_apply_async)
+    monkeypatch.setattr(
+        service_products_router.execute_service_verification_job_task,
+        "apply_async",
+        fake_apply_async,
+    )
 
     run_response = await api_client.post(
         "/api/v1/service-products/verification-jobs",
@@ -344,9 +437,9 @@ async def test_service_verification_job_dispatches_async_worker(
     job_payload = run_response.json()
     assert job_payload["status"] == "pending"
     assert job_payload["request_payload"] == {"service_ids": ["OIC3"], "max_sources": 1, "force": True}
-    assert dispatched["args"] == [dispatched["task_id"]]
-    assert dispatched["task_id"] != job_payload["id"]
-    assert dispatched["queue"] == "agents"
+    assert dispatched["args"] == [job_payload["id"]]
+    assert dispatched["task_id"] == job_payload["id"]
+    assert dispatched["queue"] == "celery"
 
 
 @pytest.mark.asyncio
@@ -448,6 +541,171 @@ async def test_service_verification_agent_applies_accepted_limit_claim(
     updated_limit = next(item for item in limits_payload if item["limit_key"] == "max_message_size_kb")
     assert updated_limit["value"] == 20480
     assert updated_limit["unit"] == "KB"
+
+
+@pytest.mark.asyncio
+async def test_service_verifier_records_claim_level_confirmation_without_human_review(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """An unchanged located limit is auto-confirmed; only conflicting values need review."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        profile = ServiceCapabilityProfile(
+            service_id="OIC3",
+            name="Oracle Integration 3",
+            category="ORCHESTRATION",
+            limits={},
+        )
+        session.add(profile)
+        await session.flush()
+        limit = ServiceLimit(
+            service_profile_id=profile.id,
+            limit_key="max_message_size_kb",
+            label="Max Message Size Kb",
+            scope="service_operation",
+            limit_type="payload",
+            constraint_kind="hard_limit",
+            enforcement="block_when_applicable",
+            applicability={},
+            value=10240,
+            unit="KB",
+            source_url="https://docs.oracle.com/example",
+            confidence=0.9,
+        )
+        source = ServiceEvidenceSource(
+            service_profile_id=profile.id,
+            url="https://docs.oracle.com/example",
+            title="OIC limits",
+            content_hash=service_product_service._content_hash("Maximum Message Size: 10 MB."),
+            status="verified",
+        )
+        unrelated_source = ServiceEvidenceSource(
+            service_profile_id=profile.id,
+            url="https://docs.oracle.com/aaa-unrelated",
+            title="Unrelated product page",
+            status="verified",
+        )
+        session.add_all([limit, source, unrelated_source])
+        await session.commit()
+
+    async def fake_fetch_evidence_text(url: str) -> tuple[int, str]:
+        assert url == "https://docs.oracle.com/example"
+        return 200, "<main>Maximum Message Size: 10 MB.</main>"
+
+    monkeypatch.setattr(service_product_service, "_fetch_evidence_text", fake_fetch_evidence_text)
+    async with session_factory() as session:
+        async with session.begin():
+            created = await service_product_service.create_verification_job(
+                ServiceVerificationRunRequest(service_ids=["OIC3"], max_sources=1, force=True),
+                "service-verification-scheduler",
+                session,
+            )
+        async with session.begin():
+            completed = await service_product_service.run_verification_job(created.id, session)
+        first_claims = list((await session.scalars(select(ServiceLimitEvidenceClaim))).all())
+        await session.rollback()
+
+        monkeypatch.setattr(
+            service_product_service,
+            "CLAIM_PARSER_VERSION",
+            "oracle_http_claim_parser_test_v4",
+        )
+        async with session.begin():
+            rerun = await service_product_service.create_verification_job(
+                ServiceVerificationRunRequest(service_ids=["OIC3"], max_sources=1, force=True),
+                "service-verification-scheduler",
+                session,
+            )
+        async with session.begin():
+            await service_product_service.run_verification_job(rerun.id, session)
+        claims = list((await session.scalars(select(ServiceLimitEvidenceClaim))).all())
+
+    assert completed.status == "completed"
+    assert completed.changes_detected == 0
+    assert len(first_claims) == 1
+    assert len(claims) == 2
+    assert {claim.parser_version for claim in claims} == {
+        "oracle_http_claim_parser_v3",
+        "oracle_http_claim_parser_test_v4",
+    }
+    assert sum(1 for claim in claims if claim.is_current) == 1
+    current_claim = next(claim for claim in claims if claim.is_current)
+    assert current_claim.status == "confirmed"
+    assert current_claim.observed_value == 10240
+    assert current_claim.source_content_hash
+    assert current_claim.source_locator is not None
+    assert current_claim.source_locator.startswith("normalized-text:")
+    assert current_claim.evidence_excerpt == "Maximum Message Size: 10 MB."
+
+    response = await api_client.get("/api/v1/service-products/limit-assurance")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "trusted"
+    assert payload["confirmed_limits"] == 1
+    assert payload["coverage_pct"] == 100.0
+
+
+@pytest.mark.asyncio
+async def test_limit_assurance_does_not_equate_verified_page_with_verified_limit(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    """A source hash without a matching claim must remain explicitly unverified."""
+
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        profile = ServiceCapabilityProfile(
+            service_id="QUEUE",
+            name="OCI Queue",
+            category="MESSAGING",
+            limits={},
+        )
+        session.add(profile)
+        await session.flush()
+        session.add_all(
+            [
+                ServiceLimit(
+                    service_profile_id=profile.id,
+                    limit_key="max_message_size_kb",
+                    label="Maximum Message Size",
+                    value=256,
+                    unit="KB",
+                    source_url="https://docs.oracle.com/queue",
+                ),
+                ServiceLimit(
+                    service_profile_id=profile.id,
+                    limit_key="partition_count_immutable_after_creation",
+                    label="Partition Count Immutable After Creation",
+                    value=True,
+                    unit=None,
+                    constraint_kind="required_configuration",
+                    enforcement="inform",
+                    source_url="https://docs.oracle.com/queue",
+                ),
+                ServiceEvidenceSource(
+                    service_profile_id=profile.id,
+                    url="https://docs.oracle.com/queue",
+                    title="Queue limits",
+                    content_hash="page-hash",
+                    status="verified",
+                    last_checked_at=datetime.now(UTC),
+                ),
+            ]
+        )
+        await session.commit()
+
+    response = await api_client.get("/api/v1/service-products/limit-assurance")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "incomplete"
+    assert payload["active_limits"] == 1
+    assert payload["non_numeric_rules"] == 1
+    assert payload["confirmed_limits"] == 0
+    assert payload["unverified_limits"] == 1
+    assert payload["coverage_pct"] == 0.0
 
 
 @pytest.mark.asyncio

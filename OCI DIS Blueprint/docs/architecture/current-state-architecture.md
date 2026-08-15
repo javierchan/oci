@@ -1,6 +1,6 @@
 # Current-State Architecture
 
-**Baseline:** working tree through migration `20260814_0057`
+**Baseline:** working tree through migration `20260814_0061`
 
 **Observed:** 2026-08-14
 
@@ -139,7 +139,7 @@ engines.
 
 ## 5. Data authority and persistence
 
-The observed runtime contains 65 application tables. The following diagram is a
+The observed runtime contains 66 application tables. The following diagram is a
 domain-level model, not a table-by-table physical ERD.
 
 ```mermaid
@@ -158,6 +158,8 @@ erDiagram
     SUPPORT_CONVERSATION ||--o{ SUPPORT_MESSAGE : contains
     SUPPORT_MESSAGE o|--o| AGENT_RUN : invokes
     KNOWLEDGE_JOB ||--o{ KNOWLEDGE_FINDING : reports
+    SERVICE_LIMIT ||--o{ SERVICE_LIMIT_EVIDENCE_CLAIM : proves
+    SERVICE_EVIDENCE_SOURCE ||--o{ SERVICE_LIMIT_EVIDENCE_CLAIM : supports
     PROJECT ||--o{ AUDIT_EVENT : emits
 ```
 
@@ -168,6 +170,8 @@ Authority rules:
 - Volumetry snapshots, BOM results, published price evidence, and agent evidence
   are versioned or immutable records.
 - Service limits and interoperability rules are normalized runtime authority.
+  Claim-level evidence separately proves whether each active limit is present in
+  an exact current Oracle source hash; a downloaded page is not itself proof.
   Assumption sets contain client workload unknowns, not OCI service facts.
 - Persistent files are addressed by canonical `s3://bucket/key` references.
 - The committed OpenAPI and App Knowledge artifacts are drift-checked generated
@@ -353,16 +357,17 @@ traffic routing must use `/readiness` only after that migration step succeeds.
 | Evidence | Observed result |
 | --- | --- |
 | Docker runtime | Eight expected Compose services running; API, PostgreSQL, Redis, and MinIO healthy |
-| Migration state | Current and head at `20260814_0057` |
+| Migration state | Current and head at `20260814_0061` |
 | Authentication | Local login, forged-header rejection, cross-user `404`, and scoped read-only token lifecycle pass |
 | Browser authentication QA | Login, Account, project visibility, token create/revoke, and zero console warnings/errors pass |
-| API tests | 363 passed |
+| API tests | 375 passed |
 | Calculation engine | 99 passed |
 | Pricing engine | 35 passed |
 | Frontend tests | 142 passed across 24 files |
 | Static checks | Ruff, scoped mypy, TypeScript, and ESLint passed |
 | Production build | Next.js production build passed |
-| App Knowledge | Deterministic/provider drift check passed; source hash prefix `6127cedd94cb`; complete OCI provider vectors at 512 dimensions |
+| App Knowledge | Deterministic/provider drift check passed; source hash prefix `297eb2520f00`; `308/308` OCI provider vectors at 512 dimensions |
+| Service-limit assurance | Real Oracle smoke completed against API Gateway, Queue, and Streaming: 12 of 36 core numeric limits confirmed; global library coverage 13.48%, honestly `incomplete` |
 
 Focused non-destructive browser authentication QA was rerun against the retained
 data stack. Destructive canonical browser cleanup flows still require an isolated

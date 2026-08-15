@@ -1,11 +1,12 @@
 /* Governed service product library overview. */
 
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { AlertTriangle, ArrowRight, CheckCircle2, ExternalLink, Network } from "lucide-react";
 
 import { Breadcrumb } from "@/components/breadcrumb";
 import { ServiceVerificationAgentPanel } from "@/components/service-verification-agent-panel";
-import { api } from "@/lib/api";
+import { api, isApiError } from "@/lib/api";
 import { formatDate } from "@/lib/format";
 
 function verificationTone(status: string): string {
@@ -29,17 +30,27 @@ function commercialTone(status: string): string {
 }
 
 export default async function AdminServicesPage(): Promise<JSX.Element> {
-  const [serviceProducts, matrix, verificationJobs, verificationAlerts] = await Promise.all([
-    api.listServiceProducts(),
-    api.getServiceInteroperabilityMatrix(),
-    api.listServiceVerificationJobs({ limit: 5 }).catch(() => ({ jobs: [], total: 0 })),
-    api.listServiceVerificationAlerts({ limit: 6 }).catch(() => ({
-      alerts: [],
-      total: 0,
-      open_findings_count: 0,
-      stale_evidence_count: 0,
-    })),
-  ]);
+  let overview;
+  try {
+    overview = await Promise.all([
+      api.listServiceProducts(),
+      api.getServiceInteroperabilityMatrix(),
+      api.getServiceLimitAssurance(),
+      api.listServiceVerificationJobs({ limit: 5 }).catch(() => ({ jobs: [], total: 0 })),
+      api.listServiceVerificationAlerts({ limit: 6 }).catch(() => ({
+        alerts: [],
+        total: 0,
+        open_findings_count: 0,
+        stale_evidence_count: 0,
+      })),
+    ]);
+  } catch (error) {
+    if (isApiError(error) && error.status === 401) {
+      redirect("/login?next=%2Fadmin%2Fservices");
+    }
+    throw error;
+  }
+  const [serviceProducts, matrix, assurance, verificationJobs, verificationAlerts] = overview;
   const latestVerificationJob = verificationJobs.jobs[0] ?? null;
 
   return (
@@ -74,9 +85,9 @@ export default async function AdminServicesPage(): Promise<JSX.Element> {
               <p className="mt-1 text-2xl font-semibold text-[var(--color-text-primary)]">{matrix.total_rules}</p>
             </div>
             <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3">
-              <p className="app-label">Pending Evidence</p>
+              <p className="app-label">Claim Coverage</p>
               <p className="mt-1 text-2xl font-semibold text-[var(--color-text-primary)]">
-                {serviceProducts.stale_evidence_count}
+                {assurance.coverage_pct}%
               </p>
             </div>
             <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-surface-2)] px-4 py-3">
@@ -86,6 +97,55 @@ export default async function AdminServicesPage(): Promise<JSX.Element> {
               </p>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section className="app-table-shell">
+        <div className="flex flex-col gap-4 border-b border-[var(--color-border)] px-6 py-5 lg:flex-row lg:items-end lg:justify-between">
+          <div>
+            <p className="app-label">Limit Assurance</p>
+            <h2 className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">Evidence for every active maximum and constraint</h2>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">
+              A downloaded page is not enough. A limit is confirmed only when its current value is located in the current hash of its assigned official source.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-xs font-semibold">
+            <span className="app-theme-chip">{assurance.confirmed_limits}/{assurance.active_limits} confirmed</span>
+            <span className="app-theme-chip">{assurance.non_numeric_rules} non-numeric rules excluded</span>
+            <span className="app-theme-chip">{assurance.not_located_limits} not located</span>
+            <span className="app-theme-chip">{assurance.source_attention_limits + assurance.conflict_limits} attention</span>
+          </div>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[800px] text-left text-sm">
+            <thead className="bg-[var(--color-surface-2)] text-xs uppercase tracking-[0.16em] text-[var(--color-text-muted)]">
+              <tr>
+                <th className="px-6 py-3">Product</th>
+                <th className="px-6 py-3">Confirmed</th>
+                <th className="px-6 py-3">Not located</th>
+                <th className="px-6 py-3">Unverified</th>
+                <th className="px-6 py-3">Non-numeric</th>
+                <th className="px-6 py-3">Attention</th>
+                <th className="px-6 py-3">Coverage</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-[var(--color-border)]">
+              {assurance.services.map((service) => (
+                <tr key={service.service_id}>
+                  <td className="px-6 py-4">
+                    <Link className="app-link font-semibold" href={`/admin/services/${service.service_id}`}>{service.service_id}</Link>
+                    <p className="mt-1 text-xs text-[var(--color-text-muted)]">{service.service_name}</p>
+                  </td>
+                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{service.confirmed_limits}/{service.active_limits}</td>
+                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{service.not_located_limits}</td>
+                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{service.unverified_limits}</td>
+                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{service.non_numeric_rules}</td>
+                  <td className="px-6 py-4 text-[var(--color-text-secondary)]">{service.source_attention_limits + service.conflict_limits}</td>
+                  <td className="px-6 py-4 font-semibold text-[var(--color-text-primary)]">{service.coverage_pct}%</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </section>
 
@@ -225,7 +285,7 @@ export default async function AdminServicesPage(): Promise<JSX.Element> {
             <div>
               <p className="app-label text-[var(--color-qa-revisar-text)]">Next slice</p>
               <p className="mt-2 text-sm leading-6 text-[var(--color-qa-revisar-text)]">
-                Evidence is seeded but not externally verified yet. The execute agent should fetch allowlisted Oracle sources, compute content hashes, and create review findings before rules are changed.
+                Some official sources are stale or require review. The automated verifier records claim-level proof, preserves the current approved runtime value, and creates findings before any conflicting value can be accepted.
               </p>
             </div>
           </div>

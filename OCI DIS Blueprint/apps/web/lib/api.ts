@@ -125,6 +125,7 @@ import type {
   ProjectListResponse,
   RecalculationJobStatus,
   ServiceVerificationAlertList,
+  ServiceLimitAssuranceReport,
   ServiceVerificationFinding,
   ServiceVerificationFindingReviewRequest,
   ServiceInteroperabilityMatrix,
@@ -1106,6 +1107,9 @@ export const api = {
 
   getServiceInteroperabilityMatrix: (): Promise<ServiceInteroperabilityMatrix> =>
     apiFetch<ServiceInteroperabilityMatrix>("/api/v1/service-products/matrix"),
+
+  getServiceLimitAssurance: (): Promise<ServiceLimitAssuranceReport> =>
+    apiFetch<ServiceLimitAssuranceReport>("/api/v1/service-products/limit-assurance"),
 
   listServiceVerificationJobs: (params: { limit?: number } = {}): Promise<ServiceVerificationJobList> =>
     apiFetch<ServiceVerificationJobList>(`/api/v1/service-products/verification-jobs${withQuery(params)}`),
