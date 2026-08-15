@@ -405,7 +405,7 @@ async def _summary(session_id: str, db: AsyncSession) -> ExternalCaptureSummary:
         ),
         missing_required=sum(1 for row in rows if bool(row.required_field_gaps)),
         qa_review=sum(
-            1 for row in rows if (row.qa_preview or {}).get("status") == "REVISAR"
+            1 for row in rows if (row.qa_preview or {}).get("status") == "REVIEW"
         ),
         pattern_changes=sum(
             1

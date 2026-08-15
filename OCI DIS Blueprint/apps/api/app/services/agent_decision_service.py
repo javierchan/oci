@@ -593,7 +593,7 @@ def _quality_workspace(
             ],
             validation_steps=[
                 "Revalidate each edited proposal against the governed dictionaries and active patterns.",
-                "Confirm TBQ remains Y for this exercise and Tamaño KB remains the payload evidence source.",
+                "Confirm TBQ remains Y for this exercise and Payload Size KB remains the payload evidence source.",
                 "Promote only explicitly approved proposals, then rerun QA, volumetry, topology, and BOM checks.",
             ],
             missing_inputs=gap_labels,

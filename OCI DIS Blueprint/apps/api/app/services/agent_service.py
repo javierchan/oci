@@ -922,9 +922,8 @@ async def run_agent(run_id: str, db: AsyncSession) -> AgentRunResponse:
     )
     if support_failed_closed:
         summary = (
-            "El asistente no pudo entregar una respuesta validada. La ejecución quedó registrada como fallida; inténtalo de nuevo."
-            if evidence.get("response_language") == "es"
-            else "The assistant could not deliver a validated answer. The execution was recorded as failed; please retry."
+            "The assistant could not deliver a validated answer. "
+            "The execution was recorded as failed; please retry."
         )
     decision_workspace, proposal_specs = build_decision_workspace(
         definition,

@@ -160,13 +160,13 @@ export default async function AdminHubPage(): Promise<JSX.Element> {
         </Link>
       </section>
 
-      <section className="app-card border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] p-5">
-        <p className="app-label text-[var(--color-qa-revisar-text)]">Governance impact</p>
-        <p className="mt-2 text-sm leading-6 text-[var(--color-qa-revisar-text)]">
+      <section className="app-card border-[var(--color-qa-review-border)] bg-[var(--color-qa-review-bg)] p-5">
+        <p className="app-label text-[var(--color-qa-review-text)]">Governance impact</p>
+        <p className="mt-2 text-sm leading-6 text-[var(--color-qa-review-text)]">
           Changes here affect all projects. Integration patterns are tool-agnostic; service product rules describe
           concrete OCI limits and interoperability. Dictionary and assumption changes take effect on the next recalculation.
         </p>
-        <ol className="mt-4 grid gap-3 text-sm leading-6 text-[var(--color-qa-revisar-text)] md:grid-cols-3">
+        <ol className="mt-4 grid gap-3 text-sm leading-6 text-[var(--color-qa-review-text)] md:grid-cols-3">
           <li><span className="font-semibold">1. Review scope.</span> Check the governed record and its evidence before saving.</li>
           <li><span className="font-semibold">2. Publish deliberately.</span> New writes become the current source for future project work.</li>
           <li><span className="font-semibold">3. Recalculate affected projects.</span> Historical snapshots remain immutable and retain their prior provenance.</li>

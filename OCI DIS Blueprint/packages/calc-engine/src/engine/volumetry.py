@@ -146,6 +146,24 @@ class IntegrationInput:
 # ---------------------------------------------------------------------------
 
 FREQUENCY_MAP: dict[str, float | None] = {
+    "every 5 minutes": 288.0,
+    "every 15 minutes": 96.0,
+    "every 20 minutes": 72.0,
+    "every 30 minutes": 48.0,
+    "every hour": 24.0,
+    "every 2 hours": 12.0,
+    "every 4 hours": 6.0,
+    "every 6 hours": 4.0,
+    "every 8 hours": 3.0,
+    "every 12 hours": 2.0,
+    "once per day": 1.0,
+    "weekly": 1.0 / 7,
+    "biweekly": 1.0 / 15,
+    "monthly": 1.0 / 30,
+    "real time": 24.0,
+    "on demand": 1.0,
+    # Legacy workbook aliases are accepted as inputs but never emitted as
+    # governed catalog values.
     "cada 5 minutos": 288.0,
     "cada 15 minutos": 96.0,
     "cada 20 minutos": 72.0,

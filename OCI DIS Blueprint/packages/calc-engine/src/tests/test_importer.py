@@ -8,7 +8,13 @@ Benchmark expectations from workbook TBQ Audit tab:
 """
 import pytest
 
-from ..engine.importer import parse_rows, should_include, normalize_frequency, build_header_map
+from ..engine.importer import (
+    build_header_map,
+    normalize_controlled_value,
+    normalize_frequency,
+    parse_rows,
+    should_include,
+)
 
 
 def _make_header_row():
@@ -157,10 +163,10 @@ def test_include_tbq_n_as_technical_catalog_row():
 @pytest.mark.parametrize(
     ("raw", "expected"),
     [
-        ("Every 5 minutes", "Cada 5 minutos"),
-        ("Every 15 minutes", "Cada 15 minutos"),
-        ("Every 20 minutes", "Cada 20 minutos"),
-        ("Every 30 minutes", "Cada 30 minutos"),
+        ("Every 5 minutes", "Every 5 minutes"),
+        ("Every 15 minutes", "Every 15 minutes"),
+        ("Every 20 minutes", "Every 20 minutes"),
+        ("Every 30 minutes", "Every 30 minutes"),
     ],
 )
 def test_normalize_en_us_frequencies(raw, expected):
@@ -169,7 +175,7 @@ def test_normalize_en_us_frequencies(raw, expected):
     normalized, event = normalize_frequency(raw)
 
     assert normalized == expected
-    assert event is not None
+    assert event is None
 
 
 def test_exclude_duplicado_2():
@@ -206,14 +212,34 @@ def test_include_duplicado_1():
 
 def test_frequency_normalization_alias():
     norm, event = normalize_frequency("diario")
-    assert norm == "Una vez al día"
+    assert norm == "Once per day"
     assert event is not None
     assert event.rule == "frequency_alias_map"
 
 
-def test_frequency_no_normalization_needed():
+def test_spanish_frequency_is_normalized_to_english():
     norm, event = normalize_frequency("Una vez al día")
-    assert event is None
+    assert norm == "Once per day"
+    assert event is not None
+
+
+@pytest.mark.parametrize(
+    ("field_name", "raw", "expected"),
+    [
+        ("complexity", "Medio", "Medium"),
+        ("business_criticality", "Crítica", "Critical"),
+        ("data_security_classification", "Pública", "Public"),
+        ("initial_scope", "Sí", "Yes"),
+        ("status", "En Revisión", "In Review"),
+        ("mapping_status", "En análisis", "Under Analysis"),
+    ],
+)
+def test_controlled_workbook_values_are_normalized_to_english(field_name, raw, expected):
+    normalized, event = normalize_controlled_value(field_name, raw)
+
+    assert normalized == expected
+    assert event is not None
+    assert event.rule == "english_governed_value"
 
 
 def test_frequency_none():

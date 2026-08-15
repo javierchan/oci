@@ -293,7 +293,7 @@ class CatalogQaRefreshResponse(BaseModel):
     evaluated: int
     changed: int
     qa_ok: int
-    qa_revisar: int
+    qa_review: int
     qa_pending: int
 
 

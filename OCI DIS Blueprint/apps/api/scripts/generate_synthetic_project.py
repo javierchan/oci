@@ -665,18 +665,18 @@ PROCESS_BRAND_MAP = {
 }
 
 PROCESS_FREQUENCY_CANDIDATES = {
-    "O2C": ["Tiempo Real", "Tiempo real", "Cada 5 minutos"],
-    "P2P": ["Una vez al día", "2 veces al día", "Cada 1 hora", "Cada hora"],
-    "H2R": ["Una vez al día", "2 veces al día", "Cada 1 hora", "Cada hora"],
-    "M2D": ["Cada minuto", "Tiempo Real", "Tiempo real"],
-    "R2R": ["Una vez al día", "2 veces al día", "Cada 1 hora", "Cada hora"],
-    "P2I": ["Cada 15 minutos", "Cada 30 minutos"],
-    "CX": ["Tiempo Real", "Tiempo real", "Cada 5 minutos"],
-    "SCV": ["Cada 15 minutos", "Cada 30 minutos"],
-    "PLM": ["Cada 4 horas", "Una vez al día"],
-    "DCM": ["Tiempo Real", "Tiempo real", "Cada 5 minutos"],
-    "COM": ["Semanal", "Una vez al día"],
-    "IOT": ["Cada minuto", "Tiempo Real", "Tiempo real"],
+    "O2C": ["Real Time", "Real Time", "Every 5 minutes"],
+    "P2P": ["Once per day", "Twice per day", "Every hour", "Every hour"],
+    "H2R": ["Once per day", "Twice per day", "Every hour", "Every hour"],
+    "M2D": ["Every minute", "Real Time", "Real Time"],
+    "R2R": ["Once per day", "Twice per day", "Every hour", "Every hour"],
+    "P2I": ["Every 15 minutes", "Every 30 minutes"],
+    "CX": ["Real Time", "Real Time", "Every 5 minutes"],
+    "SCV": ["Every 15 minutes", "Every 30 minutes"],
+    "PLM": ["Every 4 hours", "Once per day"],
+    "DCM": ["Real Time", "Real Time", "Every 5 minutes"],
+    "COM": ["Weekly", "Once per day"],
+    "IOT": ["Every minute", "Real Time", "Real Time"],
 }
 
 PROCESS_ACTIONS = {
@@ -1175,35 +1175,35 @@ def choose_calendarization(trigger_type: str, frequency: str) -> str | None:
 
     if trigger_type not in {"Scheduled", "DB Polling"}:
         return None
-    if normalize(frequency) == normalize("Semanal"):
-        return "Semanal los domingos a las 03:00 MX"
-    if normalize(frequency) in {normalize("Una vez al día"), normalize("2 veces al día")}:
-        return "Diario a las 02:00 MX"
-    if normalize(frequency) in {normalize("Cada 12 horas"), normalize("Cada 6 horas")}:
+    if normalize(frequency) == normalize("Weekly"):
+        return "Weekly los domingos a las 03:00 MX"
+    if normalize(frequency) in {normalize("Once per day"), normalize("Twice per day")}:
+        return "Daily at 02:00 MX"
+    if normalize(frequency) in {normalize("Every 12 hours"), normalize("Every 6 hours")}:
         return "00:00 / 12:00 MX"
-    return "Ventana batch cada 4 horas"
+    return "Batch window every 4 hours"
 
 
 def choose_mapping_status(status_value: str) -> str:
     """Infer a light-weight mapping status."""
 
-    if status_value == IntegrationStatus.DEFINITIVA.value:
-        return "Mapeado"
-    if status_value == IntegrationStatus.YA_EXISTE.value:
-        return "Activo"
-    return "Pendiente"
+    if status_value == IntegrationStatus.TARGET_STATE.value:
+        return "Mapped"
+    if status_value == IntegrationStatus.ALREADY_EXISTS.value:
+        return "Active"
+    return "Pending"
 
 
 def choose_interface_status(status_value: str) -> str:
     """Infer a UI-facing interface status string."""
 
-    if status_value == IntegrationStatus.YA_EXISTE.value:
-        return "Operando"
-    if status_value == IntegrationStatus.DEFINITIVA.value:
-        return "Objetivo FY26"
-    if status_value == IntegrationStatus.DUPLICADO_1.value:
-        return "Duplicado controlado"
-    return "En diseño"
+    if status_value == IntegrationStatus.ALREADY_EXISTS.value:
+        return "Operating"
+    if status_value == IntegrationStatus.TARGET_STATE.value:
+        return "FY26 target"
+    if status_value == IntegrationStatus.DUPLICATE_1.value:
+        return "Controlled duplicate"
+    return "In design"
 
 
 def choose_complexity(
@@ -1214,7 +1214,7 @@ def choose_complexity(
     """Choose complexity while biasing certain patterns upward."""
 
     if pattern_id in {"#04", "#05", "#09", "#10", "#12", "#16"}:
-        return "Alto" if seq_index % 2 == 0 else "Medio"
+        return "High" if seq_index % 2 == 0 else "Medium"
     return complexity_sequence[seq_index]
 
 
@@ -1373,7 +1373,7 @@ def build_integrations(
             )
             qa_status = ctx.qa_sequence[seq_number - 1]
             if VIOLATION_SPECS.get((pattern_id, occurrence_index)) is not None:
-                qa_status = QAStatus.REVISAR.value
+                qa_status = QAStatus.REVIEW.value
             core_tools = choose_core_tools(ctx.tool_names, pattern_id)
             qa_reasons = choose_qa_reasons(
                 qa_status,
@@ -1386,7 +1386,7 @@ def build_integrations(
                 ctx.rng,
             )
             if qa_status == QAStatus.OK.value and qa_reasons:
-                qa_status = QAStatus.REVISAR.value
+                qa_status = QAStatus.REVIEW.value
             executions_per_day = ctx.frequency_execs.get(frequency)
             payload_per_hour_kb = (
                 round(payload_kb * executions_per_day / 24.0, 2)
@@ -1532,10 +1532,10 @@ def verify_integrations(
 
     qa_counts: Counter[str] = Counter(qa_status_values)
     ok_pct = qa_counts[QAStatus.OK.value] / len(integrations)
-    revisar_pct = qa_counts[QAStatus.REVISAR.value] / len(integrations)
+    revisar_pct = qa_counts[QAStatus.REVIEW.value] / len(integrations)
     if ok_pct < 0.60 or revisar_pct < 0.15:
         raise SystemExit(
-            f"ABORT: QA distribution invalid: OK={ok_pct:.2%}, REVISAR={revisar_pct:.2%}"
+            f"ABORT: QA distribution invalid: OK={ok_pct:.2%}, REVIEW={revisar_pct:.2%}"
         )
 
     violation_counts = {
@@ -1624,7 +1624,7 @@ def format_summary(
             "",
             "QA distribution:",
             f"  OK      : {qa_counts[QAStatus.OK.value]:>3} ({qa_counts[QAStatus.OK.value] / total:.0%})",
-            f"  REVISAR : {qa_counts[QAStatus.REVISAR.value]:>3} ({qa_counts[QAStatus.REVISAR.value] / total:.0%})",
+            f"  REVIEW : {qa_counts[QAStatus.REVIEW.value]:>3} ({qa_counts[QAStatus.REVIEW.value] / total:.0%})",
             f"  PENDING : {qa_counts[QAStatus.PENDING.value]:>3} ({qa_counts[QAStatus.PENDING.value] / total:.0%})",
             "",
             f"Limit-violation integrations:    {sum(violation_counts.values())}",
@@ -1773,22 +1773,22 @@ def main() -> None:
             tool_names=tool_names,
             status_sequence=build_sequence(
                 {
-                    IntegrationStatus.DEFINITIVA.value: 264,
-                    IntegrationStatus.EN_REVISION.value: 96,
-                    IntegrationStatus.YA_EXISTE.value: 72,
+                    IntegrationStatus.TARGET_STATE.value: 264,
+                    IntegrationStatus.IN_REVIEW.value: 96,
+                    IntegrationStatus.ALREADY_EXISTS.value: 72,
                     IntegrationStatus.TBD.value: 24,
-                    IntegrationStatus.DUPLICADO_1.value: 24,
+                    IntegrationStatus.DUPLICATE_1.value: 24,
                 },
                 rng,
             ),
             complexity_sequence=build_sequence(
-                {"Bajo": 168, "Medio": 216, "Alto": 96},
+                {"Low": 168, "Medium": 216, "High": 96},
                 rng,
             ),
             qa_sequence=build_sequence(
                 {
                     QAStatus.OK.value: 312,
-                    QAStatus.REVISAR.value: 120,
+                    QAStatus.REVIEW.value: 120,
                     QAStatus.PENDING.value: 48,
                 },
                 rng,

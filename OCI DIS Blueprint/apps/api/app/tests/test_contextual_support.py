@@ -266,7 +266,7 @@ async def test_support_resolves_single_active_project_for_global_cost_question(
     assert project_evidence["latest_bom"] is None
     assert any(item["href"] == f"/projects/{project.id}" for item in citations)
     assert any(item["href"] == f"/projects/{project.id}/bom" for item in citations)
-    assert "todavía no tiene un BOM calculado" in str(evidence["fallback_answer"])
+    assert "does not have a calculated BOM yet" in str(evidence["fallback_answer"])
     assert "direct_answer" not in evidence
     assert cast(dict[str, object], evidence["response_contract"])["model_authorship"] == "primary"
     assert any(item["id"] == "project.integration_count" for item in cast(list[dict[str, object]], evidence["verified_facts"]))
@@ -607,7 +607,7 @@ async def test_support_answers_general_commercial_questions_without_forcing_rout
     citations = cast(list[dict[str, str]], evidence["citations"])
     assert evidence["question_intent"] == "workflow_guidance"
     assert "direct_answer" not in evidence
-    assert "Abrir Pricing" in str(evidence["fallback_answer"])
+    assert "Open Pricing" in str(evidence["fallback_answer"])
     assert any(item["href"] == "/admin/pricing" for item in citations)
 
 
@@ -686,7 +686,7 @@ async def test_support_resolves_commercial_follow_up_from_dialogue_and_governed_
 
     commercial_context = cast(dict[str, object], evidence["commercial_service_context"])
     options = cast(list[dict[str, object]], commercial_context["sku_options"])
-    assert evidence["response_language"] == "es"
+    assert evidence["response_language"] == "en"
     assert evidence["question_intent"] == "evidence_interpretation"
     assert commercial_context["service_id"] == "OIC3"
     assert options[0]["part_number"] == "B89644"
@@ -1122,10 +1122,10 @@ async def test_support_uses_provider_as_primary_author_for_a_resolved_workflow_a
             status="completed",
             model="mock-support-model",
             summary=(
-                "Importa el libro desde el workspace del proyecto; la App conservará el lote y la trazabilidad.\n\n"
-                "1. Descarga o prepara el template gobernado.\n"
-                "2. Sube el archivo y revisa el resultado de mapeo.\n\n"
-                "**Siguiente paso:** [Abrir proyectos](/projects)"
+                "Import the workbook from the project workspace; the App will preserve the batch and lineage.\n\n"
+                "1. Download or prepare the governed template.\n"
+                "2. Upload the file and review the mapping result.\n\n"
+                "**Next action:** [Open Projects](/projects)"
             ),
             tool_name="answer_app_support_question",
             transport="responses",
@@ -1160,7 +1160,7 @@ async def test_support_uses_provider_as_primary_author_for_a_resolved_workflow_a
     refreshed = await api_client.get(
         f"/api/v1/support/conversations/{conversation_id}", headers=HEADERS_A
     )
-    assert "Importa el libro" in refreshed.json()["messages"][-1]["content"]
+    assert "Import the workbook" in refreshed.json()["messages"][-1]["content"]
 
 
 @pytest.mark.asyncio
@@ -1302,7 +1302,7 @@ async def test_support_evidence_connects_integration_to_business_process_and_gov
                 source_system="Order Management",
                 destination_system="Finance",
                 selected_pattern="#98",
-                qa_status="REVISAR",
+                qa_status="REVIEW",
             )
             session.add_all(
                 [
@@ -1412,8 +1412,8 @@ def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_cla
         }
     )
     assert "USD 42,081.70" in cost_fallback
-    assert "1 líneas" in cost_fallback
-    assert "100% de cobertura gobernada" in cost_fallback
+    assert "1 line items" in cost_fallback
+    assert "100% governed coverage" in cost_fallback
     edition_choice_fallback = support_service._evidence_fallback(
         {
             "response_language": "es",
@@ -1442,6 +1442,6 @@ def test_support_summary_grounding_rejects_unsupported_actions_and_sensitive_cla
             },
         }
     )
-    assert "Identifiqué **Oracle Integration 3 (OIC Gen3)**" in edition_choice_fallback
-    assert "Standard BYOL (B89643): USD 0.1613 por hora" in edition_choice_fallback
-    assert "Enterprise BYOL (B89644): USD 0.3226 por hora" in edition_choice_fallback
+    assert "I found **Oracle Integration 3 (OIC Gen3)**" in edition_choice_fallback
+    assert "Standard BYOL (B89643): USD 0.1613 per hour" in edition_choice_fallback
+    assert "Enterprise BYOL (B89644): USD 0.3226 per hour" in edition_choice_fallback

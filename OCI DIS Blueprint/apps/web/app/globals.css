@@ -158,9 +158,9 @@
   --color-qa-ok-text: #1f7a4d;
   --color-qa-ok-border: #b8d8c6;
 
-  --color-qa-revisar-bg: #fbecd5;
-  --color-qa-revisar-text: #a85d00;
-  --color-qa-revisar-border: #e9c58a;
+  --color-qa-review-bg: #fbecd5;
+  --color-qa-review-text: #a85d00;
+  --color-qa-review-border: #e9c58a;
 
   --color-qa-pending-bg: #f4f3ee;
   --color-qa-pending-text: #4a463d;
@@ -291,9 +291,9 @@
   --color-qa-ok-text: #30d158;
   --color-qa-ok-border: rgba(48, 209, 88, 0.38);
 
-  --color-qa-revisar-bg: rgba(255, 214, 10, 0.1);
-  --color-qa-revisar-text: #ffd60a;
-  --color-qa-revisar-border: rgba(255, 214, 10, 0.36);
+  --color-qa-review-bg: rgba(255, 214, 10, 0.1);
+  --color-qa-review-text: #ffd60a;
+  --color-qa-review-border: rgba(255, 214, 10, 0.36);
 
   --color-qa-pending-bg: #2c2c2e;
   --color-qa-pending-text: #aeaeb2;

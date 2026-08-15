@@ -275,7 +275,6 @@ def _verified_facts(evidence: dict[str, object]) -> list[dict[str, object]]:
 def _support_next_actions(evidence: dict[str, object]) -> list[dict[str, str]]:
     """Return only executable internal routes suitable for a clickable answer."""
 
-    spanish = evidence.get("response_language") == "es"
     current_context = evidence.get("current_context")
     current_route = str(current_context.get("route") or "") if isinstance(current_context, dict) else ""
     knowledge = evidence.get("app_knowledge")
@@ -287,7 +286,7 @@ def _support_next_actions(evidence: dict[str, object]) -> list[dict[str, str]]:
             href = str(routes[0]) if isinstance(routes, list) and routes else "/projects"
             name = str(closest.get("name") or "Projects")
             return [{
-                "label": f"Abrir {name}" if spanish else f"Open {name}",
+                "label": f"Open {name}",
                 "href": href,
                 "reason": "Use the closest documented App workflow.",
             }]
@@ -296,7 +295,7 @@ def _support_next_actions(evidence: dict[str, object]) -> list[dict[str, str]]:
     integration = evidence.get("integration")
     if isinstance(integration, dict) and integration.get("id") and project_id:
         return [{
-            "label": "Abrir detalle de integración" if spanish else "Open integration detail",
+            "label": "Open integration detail",
             "href": f"/projects/{project_id}/catalog/{integration['id']}",
             "reason": "Review the governed row, QA evidence, and design canvas.",
         }]
@@ -310,28 +309,28 @@ def _support_next_actions(evidence: dict[str, object]) -> list[dict[str, str]]:
             else ""
         )
         labels = {
-            "/bom": ("Abrir BOM & Cost", "Open BOM & Cost"),
-            "/catalog": ("Abrir catálogo", "Open Catalog"),
-            "": ("Abrir dashboard del proyecto", "Open project dashboard"),
+            "/bom": "Open BOM & Cost",
+            "/catalog": "Open Catalog",
+            "": "Open project dashboard",
         }
         return [{
-            "label": labels[suffix][0 if spanish else 1],
+            "label": labels[suffix],
             "href": f"/projects/{project_id}{suffix}",
             "reason": "Continue in the governed workspace for this project.",
         }]
     if "pattern_library" in evidence:
-        return [{"label": "Abrir patrones" if spanish else "Open Patterns", "href": "/admin/patterns", "reason": "Review the governed pattern definition and applicability."}]
+        return [{"label": "Open Patterns", "href": "/admin/patterns", "reason": "Review the governed pattern definition and applicability."}]
     if "service_product_library" in evidence:
-        return [{"label": "Abrir productos" if spanish else "Open Service Products", "href": "/admin/services", "reason": "Review governed service evidence and interoperability."}]
+        return [{"label": "Open Service Products", "href": "/admin/services", "reason": "Review governed service evidence and interoperability."}]
     if current_route.startswith("/"):
-        return [{"label": "Continuar en esta vista" if spanish else "Continue in this view", "href": current_route, "reason": "Use the current App context."}]
-    return [{"label": "Abrir proyectos" if spanish else "Open Projects", "href": "/projects", "reason": "Select the project or workspace you want to investigate."}]
+        return [{"label": "Continue in this view", "href": current_route, "reason": "Use the current App context."}]
+    return [{"label": "Open Projects", "href": "/projects", "reason": "Select the project or workspace you want to investigate."}]
 
 
 def _fallback_with_action(answer: str, evidence: dict[str, object]) -> str:
     """Keep provider-failure answers useful and navigable."""
 
-    if re.search(r"\*\*(?:Next action|Siguiente paso):\*\*", answer, re.IGNORECASE):
+    if re.search(r"\*\*Next action:\*\*", answer, re.IGNORECASE):
         return answer
     actions = evidence.get("next_actions")
     if not isinstance(actions, list) or not actions or not isinstance(actions[0], dict):
@@ -339,8 +338,7 @@ def _fallback_with_action(answer: str, evidence: dict[str, object]) -> str:
     action = actions[0]
     label = str(action.get("label") or "Open workspace")
     href = str(action.get("href") or "/projects")
-    prefix = "**Siguiente paso:**" if evidence.get("response_language") == "es" else "**Next action:**"
-    return f"{answer}\n\n{prefix} [{label}]({href})"
+    return f"{answer}\n\n**Next action:** [{label}]({href})"
 
 
 def _question_needs_project_scope(question: str) -> bool:
@@ -426,17 +424,12 @@ def _reference_appears_in_dialogue(reference: object, dialogue: str) -> bool:
 def _evidence_fallback(evidence: dict[str, object]) -> str:
     """Explain persisted project evidence when inference is unavailable."""
 
-    spanish = evidence.get("response_language") == "es"
     project = evidence.get("project")
     evidence_kind = str(evidence.get("evidence_interpretation") or "")
     if isinstance(project, dict) and evidence_kind.startswith("bom"):
         bom = project.get("latest_bom")
         if not isinstance(bom, dict):
-            return (
-                f"{project.get('name')} todavía no tiene un BOM calculado."
-                if spanish
-                else f"{project.get('name')} does not have a calculated BOM yet."
-            )
+            return f"{project.get('name')} does not have a calculated BOM yet."
         total = _money(bom.get("contract_total"), bom.get("currency"))
         line_items_value = bom.get("line_items")
         lines: list[object] = line_items_value if isinstance(line_items_value, list) else []
@@ -456,19 +449,12 @@ def _evidence_fallback(evidence: dict[str, object]) -> str:
                 cast(dict[str, object], lines[0]),
             )
             return (
-                f"El SKU **{line.get('part_number')}** se seleccionó para **{line.get('description')}** por la métrica "
-                f"**{line.get('metric_name')}**, con cantidad {line.get('quantity')} {line.get('unit')}. "
-                f"La fórmula gobernada es `{line.get('formula')}`."
-                if spanish
-                else f"SKU **{line.get('part_number')}** was selected for **{line.get('description')}** using "
+                f"SKU **{line.get('part_number')}** was selected for **{line.get('description')}** using "
                 f"**{line.get('metric_name')}**, quantity {line.get('quantity')} {line.get('unit')}. "
                 f"Its governed formula is `{line.get('formula')}`."
             )
         return (
-            f"El último BOM de **{project.get('name')}** totaliza **{total}**, con {len(lines)} líneas y "
-            f"{float(bom.get('coverage_pct') or 0):.0f}% de cobertura gobernada."
-            if spanish
-            else f"The latest BOM for **{project.get('name')}** totals **{total}**, with {len(lines)} line items and "
+            f"The latest BOM for **{project.get('name')}** totals **{total}**, with {len(lines)} line items and "
             f"{float(bom.get('coverage_pct') or 0):.0f}% governed coverage."
         )
     if isinstance(project, dict) and evidence_kind == "review":
@@ -479,10 +465,7 @@ def _evidence_fallback(evidence: dict[str, object]) -> str:
         coverage = project.get("commercial_coverage")
         if isinstance(coverage, dict):
             return (
-                f"Quote readiness: {coverage.get('ready', 0)} productos listos y "
-                f"{coverage.get('blocked', 0)} bloqueados. Revisa los blockers persistidos antes de publicar."
-                if spanish
-                else f"Quote readiness: {coverage.get('ready', 0)} products ready and "
+                f"Quote readiness: {coverage.get('ready', 0)} products ready and "
                 f"{coverage.get('blocked', 0)} blocked. Review the persisted blockers before publication."
             )
     commercial = evidence.get("commercial_service_context")
@@ -495,11 +478,7 @@ def _evidence_fallback(evidence: dict[str, object]) -> str:
         rows: list[str] = []
         for option in options[:8]:
             price = option.get("price")
-            price_text = (
-                "evidencia de precio no disponible"
-                if spanish
-                else "price evidence unavailable"
-            )
+            price_text = "price evidence unavailable"
             if isinstance(price, dict) and price.get("value") is not None:
                 period = str(
                     price.get("metric_name")
@@ -507,10 +486,7 @@ def _evidence_fallback(evidence: dict[str, object]) -> str:
                     or price.get("price_type")
                     or "unit"
                 ).casefold()
-                if spanish:
-                    period = {"hour": "hora", "month": "mes", "unit": "unidad"}.get(period, period)
-                connector = "por" if spanish else "per"
-                price_text = f"{price.get('currency') or 'USD'} {price['value']} {connector} {period}"
+                price_text = f"{price.get('currency') or 'USD'} {price['value']} per {period}"
             predicates_value = option.get("predicates")
             predicates: dict[str, object] = (
                 cast(dict[str, object], predicates_value)
@@ -524,11 +500,7 @@ def _evidence_fallback(evidence: dict[str, object]) -> str:
             ]
             variant = " ".join(variant_parts)
             rows.append(f"- {variant or 'Default'} ({option.get('part_number')}): {price_text}")
-        heading = (
-            f"Identifiqué **{commercial.get('service_name')}** en la evidencia comercial gobernada."
-            if spanish
-            else f"I found **{commercial.get('service_name')}** in governed commercial evidence."
-        )
+        heading = f"I found **{commercial.get('service_name')}** in governed commercial evidence."
         return f"{heading}\n\n" + "\n".join(rows)
     integration = evidence.get("integration")
     if isinstance(integration, dict):
@@ -536,31 +508,19 @@ def _evidence_fallback(evidence: dict[str, object]) -> str:
         source = str(integration.get("source_system") or "an uncaptured source")
         destination = str(integration.get("destination_system") or "an uncaptured destination")
         process_name = str(integration.get("business_process") or "an uncaptured business process")
-        if spanish:
-            summary = (
-                f"{name} mueve datos gobernados de **{source}** a **{destination}** "
-                f"dentro de **{process_name}**."
-            )
-        else:
-            summary = (
-                f"{name} moves governed data from **{source}** to **{destination}** "
-                f"within **{process_name}**."
-            )
+        summary = (
+            f"{name} moves governed data from **{source}** to **{destination}** "
+            f"within **{process_name}**."
+        )
         process = evidence.get("business_process_flow")
         if not isinstance(process, dict):
             return summary
         predecessor = process.get("captured_predecessor")
         successor = process.get("captured_successor")
-        if spanish:
-            position = (
-                f"Anterior capturada: **{predecessor or 'ninguna'}**. "
-                f"Siguiente capturada: **{successor or 'ninguna'}**."
-            )
-        else:
-            position = (
-                f"Captured predecessor: **{predecessor or 'none'}**. "
-                f"Captured successor: **{successor or 'none'}**."
-            )
+        position = (
+            f"Captured predecessor: **{predecessor or 'none'}**. "
+            f"Captured successor: **{successor or 'none'}**."
+        )
         return f"{summary}\n\n{position}"
     knowledge = evidence.get("app_knowledge")
     if isinstance(knowledge, dict) and isinstance(knowledge.get("fallback_answer"), str):
@@ -888,7 +848,7 @@ async def prepare_support_turn(
         ),
     )
     conversation_state = dict(conversation.context_state or {})
-    conversation_state["language"] = "es" if SPANISH_QUESTION_PATTERN.search(body.content) else "en"
+    conversation_state["language"] = "en"
     conversation_state["last_question"] = body.content.strip()[:300]
     conversation_state["last_route"] = body.route
     user_message = SupportMessage(
@@ -1090,7 +1050,9 @@ async def build_support_evidence(
         or 0
     )
     assumption_count = int(await db.scalar(select(func.count()).select_from(AssumptionSet)) or 0)
-    response_language = "es" if SPANISH_QUESTION_PATTERN.search(dialogue_text) else "en"
+    # Spanish terms remain valid input aliases for intent recognition, but the
+    # product-owned response contract is English-only.
+    response_language = "en"
     app_knowledge = await build_app_knowledge_evidence(
         question,
         route,

@@ -144,13 +144,13 @@ export default async function ProjectDashboardPage({
   const qaBreakdown = latestDashboard
     ? {
         OK: latestDashboard.charts.completeness.qa_ok,
-        REVISAR: latestDashboard.charts.completeness.qa_revisar,
+        REVIEW: latestDashboard.charts.completeness.qa_review,
         PENDING: latestDashboard.charts.completeness.qa_pending,
       }
-    : { OK: 0, REVISAR: 0, PENDING: 0 };
-  const qaTotal = (qaBreakdown.OK ?? 0) + (qaBreakdown.REVISAR ?? 0) + (qaBreakdown.PENDING ?? 0);
+    : { OK: 0, REVIEW: 0, PENDING: 0 };
+  const qaTotal = (qaBreakdown.OK ?? 0) + (qaBreakdown.REVIEW ?? 0) + (qaBreakdown.PENDING ?? 0);
   const qaOkPct = qaTotal > 0 ? Math.round(((qaBreakdown.OK ?? 0) / qaTotal) * 100) : 0;
-  const qaReviewPct = qaTotal > 0 ? Math.round(((qaBreakdown.REVISAR ?? 0) / qaTotal) * 100) : 0;
+  const qaReviewPct = qaTotal > 0 ? Math.round(((qaBreakdown.REVIEW ?? 0) / qaTotal) * 100) : 0;
   const qaPendingPct = qaTotal > 0 ? Math.max(0, 100 - qaOkPct - qaReviewPct) : 0;
   const patternCount = latestDashboard?.charts.pattern_mix.filter((entry) => entry.count > 0).length ?? 0;
   const productFootprint = latestDashboard?.charts.product_footprint;
@@ -293,12 +293,12 @@ export default async function ProjectDashboardPage({
           </div>
           <div className="mt-4 flex h-2 overflow-hidden rounded-full bg-[var(--color-surface-3)]">
             <span style={{ width: `${qaOkPct}%` }} className="bg-[var(--color-qa-ok-text)]" />
-            <span style={{ width: `${qaReviewPct}%` }} className="bg-[var(--color-qa-revisar-text)]" />
+            <span style={{ width: `${qaReviewPct}%` }} className="bg-[var(--color-qa-review-text)]" />
             <span style={{ width: `${qaPendingPct}%` }} className="bg-[var(--color-qa-pending-text)]" />
           </div>
           <div className="mt-3 flex flex-wrap gap-4 text-xs text-[var(--color-text-secondary)]">
             <span>OK {qaBreakdown.OK ?? 0}</span>
-            <span>Review {qaBreakdown.REVISAR ?? 0}</span>
+            <span>Review {qaBreakdown.REVIEW ?? 0}</span>
             <span>Pending {qaBreakdown.PENDING ?? 0}</span>
           </div>
         </article>
@@ -331,7 +331,7 @@ export default async function ProjectDashboardPage({
         <ProjectWorkflowGuide guide={workflowGuide} />
         <QaWorkQueue
           projectId={projectId}
-          reviewCount={qaBreakdown.REVISAR ?? 0}
+          reviewCount={qaBreakdown.REVIEW ?? 0}
           pendingCount={qaBreakdown.PENDING ?? 0}
           risks={workflowGuide.qaRisks}
         />
@@ -441,12 +441,12 @@ export default async function ProjectDashboardPage({
               </p>
               <p className="mt-1 text-xs">{pct(qaBreakdown.OK ?? 0)}</p>
             </div>
-            <div className="rounded-[1.5rem] border border-[var(--color-qa-revisar-text)]/20 bg-[var(--color-qa-revisar-bg)] p-5 text-[var(--color-qa-revisar-text)]">
-              <p className="text-xs uppercase tracking-[0.25em]">{displayQaStatus("REVISAR")}</p>
+            <div className="rounded-[1.5rem] border border-[var(--color-qa-review-text)]/20 bg-[var(--color-qa-review-bg)] p-5 text-[var(--color-qa-review-text)]">
+              <p className="text-xs uppercase tracking-[0.25em]">{displayQaStatus("REVIEW")}</p>
               <p className="mt-3 text-3xl font-semibold">
-                {qaBreakdown.REVISAR ?? 0}
+                {qaBreakdown.REVIEW ?? 0}
               </p>
-              <p className="mt-1 text-xs">{pct(qaBreakdown.REVISAR ?? 0)}</p>
+              <p className="mt-1 text-xs">{pct(qaBreakdown.REVIEW ?? 0)}</p>
             </div>
             <div className="rounded-[1.5rem] border border-[var(--color-qa-pending-text)]/20 bg-[var(--color-qa-pending-bg)] p-5 text-[var(--color-qa-pending-text)]">
               <p className="text-xs uppercase tracking-[0.25em]">{displayQaStatus("PENDING")}</p>
@@ -497,7 +497,7 @@ export default async function ProjectDashboardPage({
             </div>
             <div className="rounded-[1.5rem] bg-[var(--color-surface-2)] p-4">
               <dt className="text-xs uppercase tracking-[0.25em] text-[var(--color-text-muted)]">Expected QA Review</dt>
-              <dd className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{parityBenchmark.qaRevisar}</dd>
+              <dd className="mt-2 text-2xl font-semibold text-[var(--color-text-primary)]">{parityBenchmark.qaReview}</dd>
             </div>
           </dl>
         </article>

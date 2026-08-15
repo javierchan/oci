@@ -32,7 +32,7 @@ export type AdoptionMetric = {
   detail: string;
 };
 
-function catalogHref(projectId: string, status: "PENDING" | "REVISAR"): string {
+function catalogHref(projectId: string, status: "PENDING" | "REVIEW"): string {
   return `/projects/${projectId}/catalog?qa_status=${status}`;
 }
 
@@ -53,7 +53,7 @@ export function deriveProjectAttention(
   const items: AttentionItem[] = [];
   const completeness = dashboard?.charts.completeness;
   const pending = completeness?.qa_pending ?? 0;
-  const review = completeness?.qa_revisar ?? 0;
+  const review = completeness?.qa_review ?? 0;
 
   if (pending > 0) {
     items.push({
@@ -71,7 +71,7 @@ export function deriveProjectAttention(
       priority: review >= 20 ? "critical" : "high",
       title: `${review} integration${review === 1 ? " needs" : "s need"} architect review`,
       detail: "Resolve governed QA decisions before treating the technical baseline as sign-off ready.",
-      href: catalogHref(projectId, "REVISAR"),
+      href: catalogHref(projectId, "REVIEW"),
       source: "qa",
     });
   }
@@ -82,7 +82,7 @@ export function deriveProjectAttention(
       priority: priorityForRisk(risk.count),
       title: risk.label,
       detail: `${risk.count} affected integration${risk.count === 1 ? "" : "s"}; open the filtered catalog to inspect evidence.`,
-      href: catalogHref(projectId, "REVISAR"),
+      href: catalogHref(projectId, "REVIEW"),
       source: "qa",
     });
   }
@@ -136,7 +136,7 @@ export function deriveDecisionBrief(
   attention: AttentionItem[],
 ): DecisionBrief {
   const pending = dashboard?.charts.completeness.qa_pending ?? 0;
-  const review = dashboard?.charts.completeness.qa_revisar ?? 0;
+  const review = dashboard?.charts.completeness.qa_review ?? 0;
   const payloadCoverage = dashboard?.charts.coverage.payload.ratio ?? 0;
   const hasSizing = Boolean(latestSnapshot);
   const highPriority = attention.filter((item) => item.priority === "critical" || item.priority === "high");

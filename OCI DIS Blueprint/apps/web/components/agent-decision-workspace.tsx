@@ -25,7 +25,7 @@ function approvalFor(alternative: AgentDecisionAlternative, approvals: AgentAppr
 function statusMeta(status: AgentDecisionAlternative["status"]): { label: string; icon: typeof CheckCircle2; tone: string } {
   if (status === "ready") return { label: "Ready", icon: CheckCircle2, tone: "text-[var(--color-qa-ok-text)]" };
   if (status === "blocked") return { label: "Blocked", icon: CircleAlert, tone: "text-[var(--color-trend-down)]" };
-  return { label: "Architect review", icon: CircleDashed, tone: "text-[var(--color-qa-revisar-text)]" };
+  return { label: "Architect review", icon: CircleDashed, tone: "text-[var(--color-qa-review-text)]" };
 }
 
 function ImpactList({ label, values }: { label: string; values: string[] }): JSX.Element | null {

@@ -279,12 +279,12 @@ export default async function AdminServicesPage(): Promise<JSX.Element> {
       </section>
 
       {serviceProducts.stale_evidence_count > 0 ? (
-        <section className="app-card border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] p-5">
+        <section className="app-card border-[var(--color-qa-review-border)] bg-[var(--color-qa-review-bg)] p-5">
           <div className="flex items-start gap-3">
-            <CheckCircle2 className="mt-1 h-5 w-5 text-[var(--color-qa-revisar-text)]" />
+            <CheckCircle2 className="mt-1 h-5 w-5 text-[var(--color-qa-review-text)]" />
             <div>
-              <p className="app-label text-[var(--color-qa-revisar-text)]">Next slice</p>
-              <p className="mt-2 text-sm leading-6 text-[var(--color-qa-revisar-text)]">
+              <p className="app-label text-[var(--color-qa-review-text)]">Next slice</p>
+              <p className="mt-2 text-sm leading-6 text-[var(--color-qa-review-text)]">
                 Some official sources are stale or require review. The automated verifier records claim-level proof, preserves the current approved runtime value, and creates findings before any conflicting value can be accepted.
               </p>
             </div>

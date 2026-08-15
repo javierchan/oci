@@ -1339,7 +1339,7 @@ export interface Integration {
   idempotency: string | null;
   core_tools: string | null;
   additional_tools_overlays: string | null;
-  qa_status: "OK" | "REVISAR" | "PENDING" | string | null;
+  qa_status: "OK" | "REVIEW" | "PENDING" | string | null;
   qa_reasons: string[];
   calendarization: string | null;
   retention_processing_window: string | null;
@@ -2211,7 +2211,7 @@ export interface DashboardCoverage {
 
 export interface DashboardCompleteness {
   qa_ok: number;
-  qa_revisar: number;
+  qa_review: number;
   qa_pending: number;
   rationale_informed: number;
   core_tools_informed: number;

@@ -168,11 +168,11 @@ export function ImportMappingReview({ batch, projectId, onBatchChange }: ImportM
       </div>
 
       {formulaColumns.length > 0 ? (
-        <section className="mt-6 rounded-lg border border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] p-4 sm:p-5">
+        <section className="mt-6 rounded-lg border border-[var(--color-qa-review-border)] bg-[var(--color-qa-review-bg)] p-4 sm:p-5">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
               <div className="flex items-center gap-2">
-                <FileWarning className="h-4 w-4 text-[var(--color-qa-revisar-text)]" aria-hidden="true" />
+                <FileWarning className="h-4 w-4 text-[var(--color-qa-review-text)]" aria-hidden="true" />
                 <h3 className="font-semibold text-[var(--color-text-primary)]">Formula evidence found</h3>
               </div>
               <p className="mt-2 max-w-3xl text-sm leading-6 text-[var(--color-text-secondary)]">

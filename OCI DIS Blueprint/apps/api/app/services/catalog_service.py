@@ -16,6 +16,8 @@ from app.core.calc_engine import (
     Assumptions,
     evaluate_qa,
     executions_per_day,
+    normalize_controlled_value,
+    normalize_frequency,
     oic_billing_messages_per_execution,
     oic_billing_messages_per_month,
     oic_peak_packs_per_hour,
@@ -72,6 +74,16 @@ PATCHABLE_FIELDS = {
     "tbq",
 }
 RAW_COLUMN_PATCH_FIELD = "raw_column_values"
+PATCH_CONTROLLED_FIELDS = {"business_criticality", "data_security_classification"}
+SOURCE_CONTROLLED_FIELDS = {
+    "status",
+    "mapping_status",
+    "business_criticality",
+    "initial_scope",
+    "complexity",
+    "interface_status",
+    "data_security_classification",
+}
 SOURCE_MANAGED_FIELDS = {
     "tbq",
     "seq_number",
@@ -113,6 +125,17 @@ SOURCE_MANAGED_FIELDS = {
     "calendarization",
     "retention_processing_window",
 }
+
+
+def _canonicalize_patch_values(patch_data: dict[str, Any]) -> None:
+    for field_name in PATCH_CONTROLLED_FIELDS & patch_data.keys():
+        normalized, _ = normalize_controlled_value(
+            field_name,
+            cast(str | None, patch_data[field_name]),
+        )
+        patch_data[field_name] = normalized
+
+
 def _parse_tbq(value: Any) -> str:
     return "Y" if (parse_text(value) or "").strip().upper() == "Y" else "N"
 
@@ -311,7 +334,12 @@ def _apply_manual_source_row_updates(row: CatalogIntegration, raw_data: dict[str
     for field_name, parser in MANUAL_SOURCE_ROW_FIELD_PARSERS.items():
         if field_name not in raw_data:
             continue
-        setattr(row, field_name, parser(raw_data.get(field_name)))
+        value = parser(raw_data.get(field_name))
+        if field_name == "frequency":
+            value, _ = normalize_frequency(cast(str | None, value))
+        elif field_name in SOURCE_CONTROLLED_FIELDS:
+            value, _ = normalize_controlled_value(field_name, cast(str | None, value))
+        setattr(row, field_name, value)
     if "type" in raw_data:
         row.trigger_type = parse_text(raw_data.get("type"))
     _recompute_derived_fields(row)
@@ -494,7 +522,7 @@ def _recompute_qa(row: CatalogIntegration) -> None:
     support_reason = support_reason_code(row.selected_pattern)
     if support_reason and support_reason not in reasons:
         reasons.append(support_reason)
-    row.qa_status = "OK" if not reasons else "REVISAR"
+    row.qa_status = "OK" if not reasons else "REVIEW"
     row.qa_reasons = reasons
 
 
@@ -534,7 +562,7 @@ async def refresh_project_qa(
         evaluated=len(rows),
         changed=changed,
         qa_ok=counts.get("OK", 0),
-        qa_revisar=counts.get("REVISAR", 0),
+        qa_review=counts.get("REVIEW", 0),
         qa_pending=counts.get("PENDING", 0),
     )
     await audit_service.emit(
@@ -707,6 +735,27 @@ async def manual_create_integration(
     seq_number = await _next_seq_number(project_id, db)
     import_batch = await _create_manual_import_batch(project_id, data.tbq, db)
     raw_data = data.model_dump()
+    frequency, frequency_event = normalize_frequency(data.frequency)
+    controlled_values: dict[str, str | None] = {}
+    normalization_events: list[dict[str, object]] = []
+    if frequency_event is not None:
+        normalization_events.append(cast(dict[str, object], sanitize_for_json(frequency_event.__dict__)))
+    for field_name in (
+        "status",
+        "mapping_status",
+        "business_criticality",
+        "initial_scope",
+        "complexity",
+        "interface_status",
+        "data_security_classification",
+    ):
+        normalized_value, event = normalize_controlled_value(
+            field_name,
+            cast(str | None, getattr(data, field_name)),
+        )
+        controlled_values[field_name] = normalized_value
+        if event is not None:
+            normalization_events.append(cast(dict[str, object], sanitize_for_json(event.__dict__)))
 
     source_row = SourceIntegrationRow(
         import_batch_id=import_batch.id,
@@ -714,12 +763,12 @@ async def manual_create_integration(
         raw_data=raw_data,
         included=True,
         exclusion_reason=None,
-        normalization_events=[],
+        normalization_events=normalization_events,
     )
     db.add(source_row)
     await db.flush()
 
-    execs_result = executions_per_day(data.frequency) if data.frequency else None
+    execs_result = executions_per_day(frequency) if frequency else None
     computed_execs = execs_result.value if execs_result is not None else None
     computed_payload_hour = (
         payload_per_hour_kb(data.payload_per_execution_kb, computed_execs).value
@@ -739,9 +788,9 @@ async def manual_create_integration(
         retry_policy=data.retry_policy,
         idempotency=data.idempotency,
         target_latency_sla=data.target_latency_sla,
-        data_security_classification=data.data_security_classification,
+        data_security_classification=controlled_values["data_security_classification"],
         retention_processing_window=data.retention_processing_window,
-        business_criticality=data.business_criticality,
+        business_criticality=controlled_values["business_criticality"],
         additional_tools_overlays=None,
     )
 
@@ -756,15 +805,15 @@ async def manual_create_integration(
         business_process=data.business_process,
         interface_name=data.interface_name,
         description=data.description,
-        status=data.status,
-        mapping_status=data.mapping_status,
-        business_criticality=data.business_criticality,
-        initial_scope=data.initial_scope,
-        complexity=data.complexity,
-        frequency=data.frequency,
+        status=controlled_values["status"],
+        mapping_status=controlled_values["mapping_status"],
+        business_criticality=controlled_values["business_criticality"],
+        initial_scope=controlled_values["initial_scope"],
+        complexity=controlled_values["complexity"],
+        frequency=frequency,
         type=data.type,
         base=data.base,
-        interface_status=data.interface_status,
+        interface_status=controlled_values["interface_status"],
         target_latency_sla=data.target_latency_sla,
         trigger_type=data.type,
         payload_per_execution_kb=data.payload_per_execution_kb,
@@ -777,7 +826,7 @@ async def manual_create_integration(
         destination_system=data.destination_system,
         destination_technology_1=data.destination_technology,
         destination_owner=data.destination_owner,
-        data_security_classification=data.data_security_classification,
+        data_security_classification=controlled_values["data_security_classification"],
         executions_per_day=computed_execs,
         payload_per_hour_kb=computed_payload_hour,
         selected_pattern=data.selected_pattern,
@@ -947,6 +996,7 @@ async def update_integration(
         )
     if not patch_data and raw_column_values is None:
         return serialize_catalog_integration(row)
+    _canonicalize_patch_values(patch_data)
 
     await _validate_pattern(patch_data.get("selected_pattern"), db)
 
@@ -1097,6 +1147,7 @@ async def bulk_patch(
                 "error_code": "BULK_PATCH_FIELD_UNSUPPORTED",
             },
         )
+    _canonicalize_patch_values(patch_data)
     await _validate_pattern(patch_data.get("selected_pattern"), db)
     allowed_core_tools: set[str] | None = None
     allowed_overlay_tools: set[str] | None = None

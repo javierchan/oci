@@ -2,17 +2,21 @@
 
 const QA_STATUS_LABELS: Record<string, string> = {
   OK: "OK",
-  REVISAR: "Needs Review",
+  REVIEW: "Review",
   PENDING: "Pending",
 };
 
 const COMPLEXITY_LABELS: Record<string, string> = {
   Bajo: "Low",
+  Baja: "Low",
   Medio: "Medium",
+  Media: "Medium",
   Alto: "High",
+  Alta: "High",
 };
 
 const DISPLAY_VALUE_LABELS: Record<string, string> = {
+  REVISAR: "Review",
   "Tiempo Real": "Real Time",
   "Tiempo real": "Real Time",
   "Cada 5 minutos": "Every 5 minutes",
@@ -35,8 +39,11 @@ const DISPLAY_VALUE_LABELS: Record<string, string> = {
   Mensual: "Monthly",
   "Bajo demanda": "On demand",
   Bajo: "Low",
+  Baja: "Low",
   Medio: "Medium",
+  Media: "Medium",
   Alto: "High",
+  Alta: "High",
   "Definitiva (End-State)": "Target State",
   "En Revisión": "In Review",
   "En Progreso": "In Progress",

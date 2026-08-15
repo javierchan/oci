@@ -8,8 +8,8 @@ type QaBadgeProps = {
 
 const QA_STYLES: Record<string, string> = {
   OK: "bg-[var(--color-qa-ok-bg)] text-[var(--color-qa-ok-text)] border border-[var(--color-qa-ok-border)]",
-  REVISAR:
-    "bg-[var(--color-qa-revisar-bg)] text-[var(--color-qa-revisar-text)] border border-[var(--color-qa-revisar-border)]",
+  REVIEW:
+    "bg-[var(--color-qa-review-bg)] text-[var(--color-qa-review-text)] border border-[var(--color-qa-review-border)]",
   PENDING:
     "bg-[var(--color-qa-pending-bg)] text-[var(--color-qa-pending-text)] border border-[var(--color-qa-pending-border)]",
 };

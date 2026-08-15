@@ -64,7 +64,7 @@ async def test_dictionary_api_returns_volumetric_metadata(
                 DictionaryOption(
                     category="FREQUENCY",
                     code="FQ15",
-                    value="Tiempo Real",
+                    value="Real Time",
                     description="Proxy batch equivalent",
                     executions_per_day=24.0,
                     sort_order=1,
@@ -141,6 +141,46 @@ async def test_frequency_dictionary_enforces_canonical_codes(
     )
     assert duplicate_response.status_code == 409
     assert duplicate_response.json()["detail"]["error_code"] == "DICTIONARY_CODE_EXISTS"
+
+
+@pytest.mark.asyncio
+async def test_qa_status_dictionary_is_a_fixed_system_contract(
+    api_client: AsyncClient,
+    test_engine: AsyncEngine,
+) -> None:
+    session_factory = async_sessionmaker(test_engine, expire_on_commit=False, class_=AsyncSession)
+    async with session_factory() as session:
+        review = DictionaryOption(
+            category="QA_STATUS",
+            code="QA02",
+            value="REVIEW",
+            sort_order=2,
+            is_active=True,
+            version="1.0.0",
+        )
+        session.add(review)
+        await session.commit()
+        await session.refresh(review)
+
+    headers = {"X-Actor-Role": "Admin", "X-Actor-Id": "qa-contract-admin"}
+    create_response = await api_client.post(
+        "/api/v1/dictionaries/QA_STATUS",
+        json={"code": "QA04", "value": "CUSTOM"},
+        headers=headers,
+    )
+    update_response = await api_client.patch(
+        f"/api/v1/dictionaries/QA_STATUS/{review.id}",
+        json={"value": "CUSTOM"},
+        headers=headers,
+    )
+    delete_response = await api_client.delete(
+        f"/api/v1/dictionaries/QA_STATUS/{review.id}",
+        headers=headers,
+    )
+
+    for response in (create_response, update_response, delete_response):
+        assert response.status_code == 409
+        assert response.json()["detail"]["error_code"] == "SYSTEM_DICTIONARY_MUTATION_FORBIDDEN"
 
 
 @pytest.mark.asyncio

@@ -20,6 +20,8 @@ from app.core.calc_engine import (
     detect_header_row,
     evaluate_qa,
     executions_per_day,
+    normalize_controlled_value,
+    normalize_frequency,
     normalize_payload_to_kb,
     parse_rows,
     payload_per_hour_kb,
@@ -579,11 +581,19 @@ def _split_destination_technologies(raw_value: str | None, secondary_value: str 
     return primary, None
 
 
-def _normalized_frequency(raw_data: dict[str, object], events: list[dict[str, object]], header_map: dict[str, str]) -> str | None:
-    for event in events:
-        if event.get("field") == "frequency":
-            return parse_text(event.get("new_value"))
-    return parse_text(_extract_raw_value(raw_data, header_map, "frequency"))
+def _normalized_field(
+    field_name: str,
+    raw_data: dict[str, object],
+    events: list[dict[str, object]],
+    header_map: dict[str, str],
+) -> str | None:
+    del events
+    raw_value = parse_text(_extract_raw_value(raw_data, header_map, field_name))
+    if field_name == "frequency":
+        normalized, _ = normalize_frequency(raw_value)
+        return normalized
+    normalized, _ = normalize_controlled_value(field_name, raw_value)
+    return normalized
 
 
 def _build_catalog_integration(
@@ -593,7 +603,7 @@ def _build_catalog_integration(
     normalization_events: list[dict[str, object]],
     header_map: dict[str, str],
 ) -> CatalogIntegration:
-    frequency_value = _normalized_frequency(raw_data, normalization_events, header_map)
+    frequency_value = _normalized_field("frequency", raw_data, normalization_events, header_map)
     payload_value, _ = _normalized_payload_value(raw_data, header_map)
     destination_technology_1, destination_technology_2 = _split_destination_technologies(
         parse_text(_extract_raw_value(raw_data, header_map, "destination_technology_1")),
@@ -653,15 +663,15 @@ def _build_catalog_integration(
         business_process=parse_text(_extract_raw_value(raw_data, header_map, "business_process")),
         interface_name=parse_text(_extract_raw_value(raw_data, header_map, "interface_name")),
         description=parse_text(_extract_raw_value(raw_data, header_map, "description")),
-        business_criticality=parse_text(_extract_raw_value(raw_data, header_map, "business_criticality")),
-        status=parse_text(_extract_raw_value(raw_data, header_map, "status")),
-        mapping_status=parse_text(_extract_raw_value(raw_data, header_map, "mapping_status")),
-        initial_scope=parse_text(_extract_raw_value(raw_data, header_map, "initial_scope")),
-        complexity=parse_text(_extract_raw_value(raw_data, header_map, "complexity")),
+        business_criticality=_normalized_field("business_criticality", raw_data, normalization_events, header_map),
+        status=_normalized_field("status", raw_data, normalization_events, header_map),
+        mapping_status=_normalized_field("mapping_status", raw_data, normalization_events, header_map),
+        initial_scope=_normalized_field("initial_scope", raw_data, normalization_events, header_map),
+        complexity=_normalized_field("complexity", raw_data, normalization_events, header_map),
         frequency=frequency_value,
         type=parse_text(_extract_raw_value(raw_data, header_map, "type")),
         base=parse_text(_extract_raw_value(raw_data, header_map, "base")),
-        interface_status=parse_text(_extract_raw_value(raw_data, header_map, "interface_status")),
+        interface_status=_normalized_field("interface_status", raw_data, normalization_events, header_map),
         is_real_time=parse_bool(_extract_raw_value(raw_data, header_map, "is_real_time")),
         target_latency_sla=parse_text(_extract_raw_value(raw_data, header_map, "target_latency_sla")),
         trigger_type=parse_text(_extract_raw_value(raw_data, header_map, "trigger_type")),
@@ -677,8 +687,8 @@ def _build_catalog_integration(
         destination_technology_1=destination_technology_1,
         destination_technology_2=destination_technology_2,
         destination_owner=parse_text(_extract_raw_value(raw_data, header_map, "destination_owner")),
-        data_security_classification=parse_text(
-            _extract_raw_value(raw_data, header_map, "data_security_classification")
+        data_security_classification=_normalized_field(
+            "data_security_classification", raw_data, normalization_events, header_map
         ),
         executions_per_day=execs_per_day,
         payload_per_hour_kb=payload_hour_result.value if payload_hour_result else None,
@@ -691,7 +701,7 @@ def _build_catalog_integration(
         additional_tools_overlays=parse_text(
             _extract_raw_value(raw_data, header_map, "additional_tools_overlays")
         ),
-        qa_status="OK" if not qa_reasons else "REVISAR",
+        qa_status="OK" if not qa_reasons else "REVIEW",
         qa_reasons=qa_reasons,
         calendarization=parse_text(_extract_raw_value(raw_data, header_map, "calendarization")),
         retention_processing_window=parse_text(

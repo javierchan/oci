@@ -641,7 +641,7 @@ export default async function IntegrationDetailPage({
                   return (
                     <article
                       key={reason}
-                      className="rounded-2xl border border-[var(--color-qa-revisar-border)] border-l-4 bg-[var(--color-qa-revisar-bg)] p-4"
+                      className="rounded-2xl border border-[var(--color-qa-review-border)] border-l-4 bg-[var(--color-qa-review-bg)] p-4"
                     >
                       <p className="font-semibold text-[var(--color-text-primary)]">
                         {details?.title ?? reason}

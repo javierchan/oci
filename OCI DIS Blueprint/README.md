@@ -608,6 +608,7 @@ See [`AGENTS.md`](./AGENTS.md#milestones-implement-in-order--prd-049) for the fu
 | M79 | Deployment-neutral Multi-user Consistency + Scale Preparation | ✅ Complete | 2026-08-14 |
 | M80 | Claim-level OCI Service Limit Assurance | ✅ Implemented; source coverage remediation continues | — |
 | M81 | Professional Decision-workspace UI System | ✅ Complete | 2026-08-14 |
+| M82 | Canonical English Governance Contract | ✅ Complete | 2026-08-15 |
 | Browser QA | Bug fixes + UX enhancements from live browser test | ✅ Complete | 2026-04-14 |
 
 ## Validation Snapshot
@@ -619,7 +620,7 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   remains immutable rejected-source evidence
 - Reference seed data: `21` certified patterns, `9` architectural overlays, `27` governed canvas combinations, client-only assumption sets, governed dictionaries, and `20` normalized service products
 - Synthetic enterprise validation: deterministic governed project with `480` catalog rows, `72` distinct systems, full `#01`–`#17` pattern coverage, persisted snapshots, justifications, audit, and XLSX/JSON/PDF exports
-- Backend + calc-engine + pricing-engine: `475 passed` (`341` API, `99` calc-engine, `35` pricing-engine)
+- Backend + calc-engine + pricing-engine: `519 passed` (`379` API, `105` calc-engine, `35` pricing-engine)
 - Frontend: `142 passed` across `24` files, strict TypeScript, ESLint, and production build green
 - Pricing/BOM E2E: real 4-source Oracle verification, scheduled no-change verification,
   and post-verification BOM jobs reach terminal `completed` states
@@ -714,6 +715,15 @@ Phase 1 parity has been validated in Docker against the benchmark workbook rules
   metric rehydration is serialized and bounded so transient concurrent reads do
   not leave a false error. The responsive light/dark browser matrix, frontend
   unit suite, type/lint gates, and production build passed.
+- M82 canonical English governance: migration head `20260815_0062` removes the
+  duplicate `QA02` option, migrates every governed `REVISAR` value to `REVIEW`,
+  enforces stable dictionary-code identity, and normalizes legacy Spanish input
+  labels before persistence. Original source rows and historical audit evidence
+  remain immutable. App-owned UI, API narratives, assistant output, synthetic
+  data, and exports are English-only; retained Spanish strings are bounded input
+  aliases used solely to interpret and clean historical customer workbooks.
+  The active App Knowledge artifact is consistent at source hash `2a338bef7f2d`
+  with `265/265` Cohere Embed v4 vectors at 512 dimensions.
 
 `AGENTS.md`, this README, the root workflow, and the current architecture
 documents define the active operational contract. Dated audit reports preserve

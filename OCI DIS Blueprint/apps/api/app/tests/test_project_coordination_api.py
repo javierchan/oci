@@ -20,7 +20,7 @@ async def test_shared_view_is_persisted_and_audited(api_client: AsyncClient) -> 
     project_id = await _project(api_client)
     created = await api_client.post(
         f"/api/v1/projects/{project_id}/saved-views", headers=HEADERS,
-        json={"surface": "catalog", "label": "QA review", "filters": {"qa_status": "REVISAR"}, "is_shared": True},
+        json={"surface": "catalog", "label": "QA review", "filters": {"qa_status": "REVIEW"}, "is_shared": True},
     )
     assert created.status_code == 201, created.text
     view = created.json()

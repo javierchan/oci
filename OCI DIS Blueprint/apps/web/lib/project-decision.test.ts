@@ -21,7 +21,7 @@ function dashboard(overrides: Partial<DashboardSnapshot["charts"]["completeness"
         source_destination: { complete: 10, total: 10, ratio: 1 },
         fan_out: { complete: 10, total: 10, ratio: 1 },
       },
-      completeness: { qa_ok: 10, qa_revisar: 0, qa_pending: 0, rationale_informed: 0, core_tools_informed: 0, comments_informed: 0, retry_policy_informed: 0, ...overrides },
+      completeness: { qa_ok: 10, qa_review: 0, qa_pending: 0, rationale_informed: 0, core_tools_informed: 0, comments_informed: 0, retry_policy_informed: 0, ...overrides },
       pattern_mix: [],
       payload_distribution: [],
       forecast_confidence: { level: "high", title: "High confidence", message: "", payload_coverage_ratio: 0.8 },
@@ -40,7 +40,7 @@ const snapshot: VolumetrySnapshotSummary = {
 };
 
 const edge: GraphEdge = {
-  id: "edge-1", source: "ERP", target: "CRM", integration_count: 5, integration_ids: [], integration_names: [], integration_qa_statuses: [], business_processes: [], patterns: [], qa_statuses: {}, dominant_qa_status: "REVISAR", risk_qa_status: "REVISAR", risk_score: 80, interaction_mode: "SYNCHRONOUS", total_executions_per_day: 0, total_payload_per_execution_kb: 0, total_payload_per_hour_kb: 0, executions_coverage: 0, payload_execution_coverage: 0, payload_coverage: 0, last_updated_at: "2026-08-12T00:00:00Z", integrations: [],
+  id: "edge-1", source: "ERP", target: "CRM", integration_count: 5, integration_ids: [], integration_names: [], integration_qa_statuses: [], business_processes: [], patterns: [], qa_statuses: {}, dominant_qa_status: "REVIEW", risk_qa_status: "REVIEW", risk_score: 80, interaction_mode: "SYNCHRONOUS", total_executions_per_day: 0, total_payload_per_execution_kb: 0, total_payload_per_hour_kb: 0, executions_coverage: 0, payload_execution_coverage: 0, payload_coverage: 0, last_updated_at: "2026-08-12T00:00:00Z", integrations: [],
 };
 
 describe("project decision helpers", () => {

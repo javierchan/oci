@@ -39,7 +39,7 @@ CAPABILITY_POSITIVE_ASSERTION_PATTERN = re.compile(
     r"\bla\s+app\s+(?:soporta|permite|puede)\b",
     re.IGNORECASE,
 )
-NEXT_ACTION_PATTERN = re.compile(r"\*\*(?:Next action|Siguiente paso):\*\*", re.IGNORECASE)
+NEXT_ACTION_PATTERN = re.compile(r"\*\*Next action:\*\*", re.IGNORECASE)
 CAPABILITY_QUERY_PATTERN = re.compile(
     r"^\s*(?:can\s+(?:i|we|one|users?|the\s+app|this\s+app)|"
     r"could\s+(?:i|we|one|users?)|does\s+(?:the\s+app|this\s+app)|"
@@ -170,6 +170,9 @@ def _project_entries(
 ) -> list[dict[str, object]]:
     entries = [dict(item) for item in _as_list(evidence.get("entries")) if isinstance(item, dict)]
     for entry in entries:
+        entry.pop("purpose_es", None)
+        entry.pop("when_to_use_es", None)
+        entry.pop("steps_es", None)
         entry["routes"] = [
             _resolve_route(
                 str(route),
@@ -192,7 +195,8 @@ async def build_app_knowledge_evidence(
 ) -> dict[str, object]:
     """Retrieve the closest governed KB unit and build a provider-safe fallback."""
 
-    del capability_inquiry
+    del capability_inquiry, language
+    language = "en"
     evidence = await _semantic_query(question, current_route)
     entries = _project_entries(
         evidence,
@@ -231,13 +235,15 @@ async def build_app_knowledge_evidence(
         if isinstance(item, dict)
     ]
     if isinstance(evidence.get("top_match"), dict):
+        current_top_id = str(cast(dict[str, object], evidence["top_match"]).get("id") or "")
+        filtered_matches = cast(list[dict[str, object]], evidence["matches"])
         evidence["top_match"] = next(
             (
                 item
-                for item in cast(list[dict[str, object]], evidence["matches"])
-                if item.get("id") == cast(dict[str, object], evidence["top_match"]).get("id")
+                for item in filtered_matches
+                if item.get("id") == current_top_id
             ),
-            cast(dict[str, object], evidence["top_match"]),
+            filtered_matches[0] if filtered_matches else {},
         )
     top_match = evidence.get("top_match")
     top = top_match if isinstance(top_match, dict) else {}
@@ -288,17 +294,20 @@ def _localized_entry_value(
     *,
     language: str,
 ) -> object:
-    """Prefer reviewed Spanish guidance without translating at runtime."""
+    """Return the canonical English knowledge value.
 
-    if language == "es":
-        localized = entry.get(f"{field}_es")
-        if localized not in (None, "", []):
-            return localized
+    ``language`` remains in the internal call contract for backward compatibility,
+    but governed App output is English-only.
+    """
+
+    _ = language
     return entry.get(field)
 
 
 def deterministic_knowledge_answer(evidence: dict[str, object], *, language: str) -> str:
     """Explain the semantic decision when inference is unavailable or withheld."""
+
+    _ = language
 
     top_match = evidence.get("top_match")
     top = top_match if isinstance(top_match, dict) else {}
@@ -309,12 +318,6 @@ def deterministic_knowledge_answer(evidence: dict[str, object], *, language: str
     name = str(entry.get("name") or "OCI DIS Architect")
     route = _entry_route(entry)
     if mode == "boundary":
-        if language == "es":
-            return (
-                "No puedo ayudar con esa solicitud porque está fuera del alcance de OCI DIS Architect. "
-                "Puedo explicar evidencia gobernada de integraciones, arquitectura, QA, Pricing o BOM & Cost.\n\n"
-                "**Siguiente paso:** [Abrir Projects](/projects)"
-            )
         return (
             "That request is outside OCI DIS Architect's scope. I can explain governed integration, "
             "architecture, QA, Pricing, or BOM & Cost evidence.\n\n"
@@ -326,19 +329,9 @@ def deterministic_knowledge_answer(evidence: dict[str, object], *, language: str
         action = str(top.get("answer") or "the requested capability")
         purpose = str(_localized_entry_value(entry, "purpose", language=language) or "")
         if status == "documented":
-            if language == "es":
-                return (
-                    f"**Sí.** OCI DIS Architect documenta **{action}** en **{name}**.\n\n{purpose}\n\n"
-                    f"**Siguiente paso:** [Abrir {name}]({route})"
-                )
             return (
                 f"**Yes.** OCI DIS Architect documents **{action}** in **{name}**.\n\n{purpose}\n\n"
                 f"**Next action:** [Open {name}]({route})"
-            )
-        if language == "es":
-            return (
-                f"**No.** **{action}** no figura como una capacidad documentada de OCI DIS Architect.\n\n"
-                f"**Siguiente paso:** [Abrir {name}]({route})"
             )
         return (
             f"**No.** **{action}** is not documented as an OCI DIS Architect capability.\n\n"
@@ -346,9 +339,9 @@ def deterministic_knowledge_answer(evidence: dict[str, object], *, language: str
         )
     if intent == "concept_explanation" and top.get("answer"):
         answer = str(top["answer"])
-        prefix = "**Concepto:**" if language == "es" else "**Concept:**"
-        action = "**Siguiente paso:**" if language == "es" else "**Next action:**"
-        open_label = f"Abrir {name}" if language == "es" else f"Open {name}"
+        prefix = "**Concept:**"
+        action = "**Next action:**"
+        open_label = f"Open {name}"
         return f"**{name}**\n\n{prefix} {answer}\n\n{action} [{open_label}]({route})"
     purpose = str(_localized_entry_value(entry, "purpose", language=language) or "")
     when_to_use = str(
@@ -359,16 +352,11 @@ def deterministic_knowledge_answer(evidence: dict[str, object], *, language: str
         for step in _as_list(_localized_entry_value(entry, "steps", language=language))
     ][:4]
     if intent == "workflow_guidance" and steps:
-        heading = "**Cómo proceder**" if language == "es" else "**How to proceed**"
+        heading = "**How to proceed**"
         step_text = "\n".join(f"{index}. {step}" for index, step in enumerate(steps, start=1))
-        action = "**Siguiente paso:**" if language == "es" else "**Next action:**"
-        open_label = f"Abrir {name}" if language == "es" else f"Open {name}"
+        action = "**Next action:**"
+        open_label = f"Open {name}"
         return f"**{name}**\n\n{heading}\n{step_text}\n\n{action} [{open_label}]({route})"
-    if language == "es":
-        return (
-            f"**{name}** existe para {purpose[:1].lower() + purpose[1:] if purpose else 'guiar este flujo gobernado'}.\n\n"
-            f"**Cuándo usarlo:** {when_to_use}\n\n**Siguiente paso:** [Abrir {name}]({route})"
-        )
     return (
         f"**{name}** exists to {purpose[:1].lower() + purpose[1:] if purpose else 'guide this governed workflow'}.\n\n"
         f"**When to use it:** {when_to_use}\n\n**Next action:** [Open {name}]({route})"

@@ -26,7 +26,7 @@ function isActive(status: AgentRun["status"]): boolean {
 function indicatorColor(tone: AgentExecutionIndicatorTone): string {
   if (tone === "success") return "text-[var(--color-qa-ok-text)]";
   if (tone === "error") return "text-[var(--color-trend-down)]";
-  return "text-[var(--color-qa-revisar-text)]";
+  return "text-[var(--color-qa-review-text)]";
 }
 
 function statusIcon(run: AgentRun): JSX.Element {
@@ -313,7 +313,7 @@ export function AgentOperations({
                           </div>
                           <span className="app-theme-chip capitalize">{finding.review_status === "pending" ? "unresolved" : finding.review_status}</span>
                         </div>
-                        {finding.review_status === "pending" ? <p className="mt-3 text-xs leading-5 text-[var(--color-qa-revisar-text)]">Automatic publication is blocked until executable evidence resolves this contradiction. No routine approval is requested.</p> : null}
+                        {finding.review_status === "pending" ? <p className="mt-3 text-xs leading-5 text-[var(--color-qa-review-text)]">Automatic publication is blocked until executable evidence resolves this contradiction. No routine approval is requested.</p> : null}
                       </div>
                     ))}
                   </div>

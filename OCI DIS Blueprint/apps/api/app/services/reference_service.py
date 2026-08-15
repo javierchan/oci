@@ -36,6 +36,19 @@ from app.services.pattern_support import get_pattern_support
 
 PATTERN_ID_RE = re.compile(r"^#\d{2}$")
 FREQUENCY_CODE_RE = re.compile(r"^FQ\d{2}$")
+SYSTEM_DICTIONARY_CONTRACTS: dict[str, dict[str, str]] = {
+    "QA_STATUS": {"QA01": "OK", "QA02": "REVIEW", "QA03": "PENDING"},
+}
+
+
+def _system_dictionary_error() -> HTTPException:
+    return HTTPException(
+        status_code=409,
+        detail={
+            "detail": "QA status values are fixed by the application workflow contract.",
+            "error_code": "SYSTEM_DICTIONARY_MUTATION_FORBIDDEN",
+        },
+    )
 
 
 def serialize_pattern(pattern: PatternDefinition) -> PatternDefinitionResponse:
@@ -447,6 +460,8 @@ async def create_dictionary_option(
     """Create a new governed dictionary option and audit the insert."""
 
     normalized_category = normalize_dictionary_category(category)
+    if normalized_category in SYSTEM_DICTIONARY_CONTRACTS:
+        raise _system_dictionary_error()
     normalized_code = _normalize_dictionary_code(normalized_category, body.code)
     await _ensure_dictionary_code_available(normalized_category, normalized_code, db)
     option = DictionaryOption(
@@ -485,6 +500,17 @@ async def update_dictionary_option(
     if not patch:
         return serialize_dictionary_option(option)
 
+    system_contract = SYSTEM_DICTIONARY_CONTRACTS.get(option.category)
+    if system_contract is not None:
+        expected_value = system_contract.get(option.code or "")
+        if (
+            expected_value is None
+            or ("code" in patch and patch["code"] != option.code)
+            or ("value" in patch and patch["value"] != expected_value)
+            or patch.get("is_active") is False
+        ):
+            raise _system_dictionary_error()
+
     if "code" in patch:
         normalized_code = _normalize_dictionary_code(option.category, cast(str, patch["code"]))
         await _ensure_dictionary_code_available(
@@ -522,6 +548,9 @@ async def deactivate_dictionary_option(
 ) -> DictionaryOptionResponse:
     """Soft-delete one dictionary option by marking it inactive."""
 
+    option = await _load_dictionary_option(category, option_id, db)
+    if option.category in SYSTEM_DICTIONARY_CONTRACTS:
+        raise _system_dictionary_error()
     return await update_dictionary_option(
         category=category,
         option_id=option_id,

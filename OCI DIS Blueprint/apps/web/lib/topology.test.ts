@@ -20,12 +20,12 @@ const EDGE: GraphEdge = {
   integration_count: 3,
   integration_ids: ["1", "2", "3"],
   integration_names: ["One", "Two", "Three"],
-  integration_qa_statuses: ["OK", "REVISAR", "REVISAR"],
+  integration_qa_statuses: ["OK", "REVIEW", "REVIEW"],
   business_processes: ["Order to Cash — Retail to Finance"],
   patterns: ["#01 · Request-Reply"],
-  qa_statuses: { OK: 1, REVISAR: 2 },
-  dominant_qa_status: "REVISAR",
-  risk_qa_status: "REVISAR",
+  qa_statuses: { OK: 1, REVIEW: 2 },
+  dominant_qa_status: "REVIEW",
+  risk_qa_status: "REVIEW",
   risk_score: 23,
   interaction_mode: "SYNCHRONOUS",
   total_executions_per_day: 360,
@@ -54,7 +54,7 @@ describe("topology helpers", () => {
 
   it("describes the actionable risk carried by an edge", () => {
     expect(edgeRiskLabel(EDGE)).toBe("2 need review");
-    expect(edgeRiskLabel({ ...EDGE, qa_statuses: { PENDING: 1, REVISAR: 2 } })).toBe("1 pending");
+    expect(edgeRiskLabel({ ...EDGE, qa_statuses: { PENDING: 1, REVIEW: 2 } })).toBe("1 pending");
   });
 
   it("advances through risk review without mutating governed QA", () => {
@@ -71,7 +71,7 @@ describe("topology helpers", () => {
     const complete = advanceRiskReview([EDGE, secondEdge], [EDGE.id], "second");
     expect(complete.nextEdge).toBeNull();
     expect(complete.complete).toBe(true);
-    expect(EDGE.risk_qa_status).toBe("REVISAR");
+    expect(EDGE.risk_qa_status).toBe("REVIEW");
   });
 
   it("counts top patterns from their actual connected integrations", () => {

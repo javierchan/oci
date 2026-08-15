@@ -1,7 +1,7 @@
 """
 QA Engine — row-level QA status calculation (PRD-025).
 
-Replicates OK / REVISAR logic from workbook column AN.
+Replicates OK / REVIEW logic from workbook column AN.
 Returns structured reasons so the UI can drill down.
 """
 from __future__ import annotations
@@ -13,8 +13,8 @@ from .pattern_certification import composition_issues, get_pattern_certification
 
 @dataclass(frozen=True)
 class QAResult:
-    status: str          # "OK" | "REVISAR"
-    reasons: list[str]   # structured reason codes for REVISAR
+    status: str          # "OK" | "REVIEW"
+    reasons: list[str]   # structured reason codes for REVIEW
 
 
 def _normalize_trigger_key(value: str) -> str:
@@ -174,5 +174,5 @@ def evaluate_qa(
         if reason_code not in reasons:
             reasons.append(reason_code)
 
-    status = "OK" if not reasons else "REVISAR"
+    status = "OK" if not reasons else "REVIEW"
     return QAResult(status=status, reasons=reasons)

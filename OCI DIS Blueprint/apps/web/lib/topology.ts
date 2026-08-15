@@ -102,7 +102,7 @@ export function edgeMetricUnit(metric: TopologyMetricMode): string {
 }
 
 export function edgeRiskLabel(edge: GraphEdge): string {
-  const review = edge.qa_statuses.REVISAR ?? 0;
+  const review = edge.qa_statuses.REVIEW ?? 0;
   const pending = edge.qa_statuses.PENDING ?? 0;
   if (pending > 0) {
     return `${pending} pending`;
@@ -299,7 +299,7 @@ export function qaTotalsForEdges(edges: GraphEdge[]): QaTotals {
   return edges.reduce<QaTotals>(
     (totals, edge) => {
       const ok = edge.qa_statuses.OK ?? 0;
-      const review = edge.qa_statuses.REVISAR ?? 0;
+      const review = edge.qa_statuses.REVIEW ?? 0;
       const pending = edge.qa_statuses.PENDING ?? 0;
       return {
         ok: totals.ok + ok,

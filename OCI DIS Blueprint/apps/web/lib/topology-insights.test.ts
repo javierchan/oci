@@ -44,11 +44,11 @@ function edge(
     patterns: ["#01 · Request-Reply"],
     qa_statuses: {
       OK: integrations.filter((item) => item.qa_status === "OK").length,
-      REVISAR: integrations.filter((item) => item.qa_status === "REVISAR").length,
+      REVIEW: integrations.filter((item) => item.qa_status === "REVIEW").length,
       PENDING: integrations.filter((item) => item.qa_status === "PENDING").length,
     },
-    dominant_qa_status: integrations.some((item) => item.qa_status === "REVISAR") ? "REVISAR" : "OK",
-    risk_qa_status: integrations.some((item) => item.qa_status === "REVISAR") ? "REVISAR" : "OK",
+    dominant_qa_status: integrations.some((item) => item.qa_status === "REVIEW") ? "REVIEW" : "OK",
+    risk_qa_status: integrations.some((item) => item.qa_status === "REVIEW") ? "REVIEW" : "OK",
     risk_score: 1,
     interaction_mode: "SYNCHRONOUS",
     total_executions_per_day: sum(integrations.map((item) => item.executions_per_day)),
@@ -70,7 +70,7 @@ const EDGE_ONE = edge(
   "a-b",
   "A",
   "B",
-  [integration("1", "OK", 64, 1536), integration("2", "REVISAR", 128, 3072)],
+  [integration("1", "OK", 64, 1536), integration("2", "REVIEW", 128, 3072)],
 );
 const EDGE_TWO = edge("b-c", "B", "C", [integration("3", "PENDING", null, null)]);
 const GRAPH: GraphResponse = {

@@ -253,54 +253,104 @@ def should_include(row: list, header_map: dict) -> tuple[bool, Optional[str]]:
 # ---------------------------------------------------------------------------
 
 FREQUENCY_ALIASES: dict[str, str] = {
-    "diario": "Una vez al día",
-    "1 vez al dia": "Una vez al día",
-    "once a day": "Una vez al día",
-    "hourly": "Cada 1 hora",
-    "every hour": "Cada 1 hora",
-    "every 5 minutes": "Cada 5 minutos",
-    "every 15 minutes": "Cada 15 minutos",
-    "every 20 minutes": "Cada 20 minutos",
-    "every 30 minutes": "Cada 30 minutos",
-    "cada hora": "Cada 1 hora",
-    "cada 1 hora": "Cada 1 hora",
-    "every 2 hours": "Cada 2 horas",
-    "cada 2 horas": "Cada 2 horas",
-    "every 4 hours": "Cada 4 horas",
-    "cada 4 horas": "Cada 4 horas",
-    "every 6 hours": "Cada 6 horas",
-    "cada 6 horas": "Cada 6 horas",
-    "every 8 hours": "Cada 8 horas",
-    "cada 8 horas": "Cada 8 horas",
-    "every 12 hours": "Cada 12 horas",
-    "cada 12 horas": "Cada 12 horas",
-    "2 veces al dia": "Cada 12 horas",
-    "dos veces al dia": "Cada 12 horas",
-    "4 veces al dia": "Cada 6 horas",
-    "real time": "Tiempo Real",
-    "tiempo real": "Tiempo Real",
-    "weekly": "Semanal",
-    "monthly": "Mensual",
-    "once daily": "Una vez al día",
-    "mensual": "Mensual",
-    "semanal": "Semanal",
-    "biweekly": "Quincenal",
-    "quincenal": "Quincenal",
-    "on demand": "Bajo demanda",
-    "bajo demanda": "Bajo demanda",
+    "diario": "Once per day", "1 vez al dia": "Once per day",
+    "una vez al dia": "Once per day",
+    "once a day": "Once per day", "once daily": "Once per day",
+    "once per day": "Once per day",
+    "hourly": "Every hour", "every hour": "Every hour",
+    "cada hora": "Every hour", "cada 1 hora": "Every hour",
+    "every 5 minutes": "Every 5 minutes", "cada 5 minutos": "Every 5 minutes",
+    "every 15 minutes": "Every 15 minutes", "cada 15 minutos": "Every 15 minutes",
+    "every 20 minutes": "Every 20 minutes", "cada 20 minutos": "Every 20 minutes",
+    "every 30 minutes": "Every 30 minutes", "cada 30 minutos": "Every 30 minutes",
+    "every 2 hours": "Every 2 hours", "cada 2 horas": "Every 2 hours",
+    "every 4 hours": "Every 4 hours", "cada 4 horas": "Every 4 hours",
+    "every 6 hours": "Every 6 hours", "cada 6 horas": "Every 6 hours",
+    "4 veces al dia": "Every 6 hours",
+    "every 8 hours": "Every 8 hours", "cada 8 horas": "Every 8 hours",
+    "every 12 hours": "Every 12 hours", "cada 12 horas": "Every 12 hours",
+    "2 veces al dia": "Every 12 hours", "dos veces al dia": "Every 12 hours",
+    "real time": "Real Time", "tiempo real": "Real Time",
+    "weekly": "Weekly", "semanal": "Weekly",
+    "biweekly": "Biweekly", "quincenal": "Biweekly",
+    "monthly": "Monthly", "mensual": "Monthly",
+    "on demand": "On Demand", "bajo demanda": "On Demand",
 }
+
+CONTROLLED_VALUE_ALIASES: dict[str, dict[str, str]] = {
+    "complexity": {
+        "bajo": "Low", "baja": "Low", "low": "Low",
+        "medio": "Medium", "media": "Medium", "medium": "Medium",
+        "alto": "High", "alta": "High", "high": "High",
+    },
+    "business_criticality": {
+        "bajo": "Low", "baja": "Low", "low": "Low",
+        "medio": "Medium", "media": "Medium", "medium": "Medium",
+        "alto": "High", "alta": "High", "high": "High",
+        "critica": "Critical", "critical": "Critical",
+    },
+    "data_security_classification": {
+        "publica": "Public", "public": "Public", "interna": "Internal",
+        "internal": "Internal", "confidencial": "Confidential",
+        "confidential": "Confidential", "restringida": "Restricted",
+        "restricted": "Restricted",
+    },
+    "initial_scope": {"si": "Yes", "yes": "Yes", "y": "Yes", "no": "No", "n": "No"},
+    "status": {
+        "ya existe": "Already Exists", "already exists": "Already Exists",
+        "definitiva (end-state)": "Target State", "target state": "Target State",
+        "en revision": "In Review", "in review": "In Review",
+        "en progreso": "In Progress", "in progress": "In Progress",
+        "tbd": "TBD", "duplicado 1": "Duplicate 1", "duplicate 1": "Duplicate 1",
+    },
+    "mapping_status": {
+        "en analisis": "Under Analysis", "under analysis": "Under Analysis",
+        "mapeado": "Mapped", "mapped": "Mapped",
+        "pendiente": "Pending", "pending": "Pending",
+    },
+}
+CONTROLLED_VALUE_ALIASES["interface_status"] = CONTROLLED_VALUE_ALIASES["status"]
+
+
+def _normalize_alias_key(value: str) -> str:
+    collapsed = " ".join(value.strip().casefold().split())
+    return normalize("NFKD", collapsed).encode("ascii", "ignore").decode("ascii")
 
 
 def normalize_frequency(raw: Optional[str]) -> tuple[Optional[str], Optional[NormalizationEvent]]:
     if raw is None:
         return None, None
-    cleaned = raw.strip().lower()
+    cleaned = _normalize_alias_key(raw)
     canonical = FREQUENCY_ALIASES.get(cleaned)
     if canonical and canonical != raw.strip():
         return canonical, NormalizationEvent(
             field="frequency", old_value=raw, new_value=canonical, rule="frequency_alias_map"
         )
     return raw.strip() or None, None
+
+
+def normalize_controlled_value(
+    field_name: str,
+    raw: Optional[str],
+) -> tuple[Optional[str], Optional[NormalizationEvent]]:
+    """Map supported legacy labels to the App's English governed contract."""
+
+    if raw is None:
+        return None, None
+    stripped = raw.strip()
+    if not stripped:
+        return None, None
+    canonical = CONTROLLED_VALUE_ALIASES.get(field_name, {}).get(
+        _normalize_alias_key(stripped), stripped
+    )
+    if canonical != stripped:
+        return canonical, NormalizationEvent(
+            field=field_name,
+            old_value=raw,
+            new_value=canonical,
+            rule="english_governed_value",
+        )
+    return canonical, None
 
 
 # ---------------------------------------------------------------------------
@@ -353,6 +403,14 @@ def parse_rows(
             freq_norm, freq_event = normalize_frequency(str(freq_raw) if freq_raw else None)
             if freq_event:
                 events.append(freq_event)
+            for field_name in CONTROLLED_VALUE_ALIASES:
+                raw_value = _get(raw_row, header_map, field_name)
+                _, event = normalize_controlled_value(
+                    field_name,
+                    str(raw_value) if raw_value is not None else None,
+                )
+                if event:
+                    events.append(event)
 
             loaded_count += 1
         else:

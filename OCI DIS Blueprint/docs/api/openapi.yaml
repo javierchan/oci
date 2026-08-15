@@ -6781,8 +6781,8 @@
             "title": "Qa Pending",
             "type": "integer"
           },
-          "qa_revisar": {
-            "title": "Qa Revisar",
+          "qa_review": {
+            "title": "Qa Review",
             "type": "integer"
           }
         },
@@ -6791,7 +6791,7 @@
           "evaluated",
           "changed",
           "qa_ok",
-          "qa_revisar",
+          "qa_review",
           "qa_pending"
         ],
         "title": "CatalogQaRefreshResponse",
@@ -8459,9 +8459,9 @@
             "title": "Qa Pending",
             "type": "integer"
           },
-          "qa_revisar": {
+          "qa_review": {
             "default": 0,
-            "title": "Qa Revisar",
+            "title": "Qa Review",
             "type": "integer"
           },
           "rationale_informed": {

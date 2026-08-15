@@ -3,17 +3,11 @@ sections:
   - id: identity-access
     name: Identity and access
     purpose: Bootstrap the first administrator, authenticate local users, manage App roles and project memberships, rotate passwords, and issue least-privilege read-only API tokens for external clients.
-    purpose_es: Crear de forma segura el primer administrador, autenticar usuarios locales, administrar roles y membresías por proyecto, rotar contraseñas y emitir tokens API de solo lectura con privilegio mínimo.
     when_to_use: Use the one-shot bootstrap only for a new installation, Account for your own password and API tokens, and User Management to create, rename, assign, disable, or reset local users.
-    when_to_use_es: Usa el bootstrap de una sola ejecución únicamente en una instalación nueva, Account para tu contraseña y tokens, y User Management para crear, renombrar, asignar, desactivar o restablecer usuarios locales.
     steps:
       - Sign in with the local username and password provisioned by an administrator.
       - Open the avatar menu for Account security or, when authorized, User management.
       - Assign the App role and explicit project memberships, then create API tokens with only the required read scopes and project subset.
-    steps_es:
-      - Inicia sesión con el usuario local y contraseña provisionados por un administrador.
-      - Abre el menú del avatar para Account security o, si estás autorizado, User management.
-      - Asigna rol y proyectos, y crea tokens únicamente con los permisos de lectura y proyectos necesarios.
     routes: ["/login", "/account", "/admin/users"]
     endpoints:
       - { method: POST, path: /api/v1/auth/login }
@@ -32,17 +26,11 @@ sections:
   - id: projects
     name: Projects
     purpose: Create and manage isolated architecture assessment workspaces, then review each project's technical dashboard and governed lifecycle.
-    purpose_es: Crear y administrar espacios aislados de evaluación de arquitectura, y revisar el dashboard técnico y el ciclo de vida gobernado de cada proyecto.
     when_to_use: Start here to select a customer assessment, create a project, inspect its latest technical snapshot, or archive completed work.
-    when_to_use_es: Usa Projects para seleccionar una evaluación de cliente, crear un proyecto, revisar su snapshot técnico o archivar trabajo concluido.
     steps:
       - Open Projects and select or create an assessment workspace.
       - Open the project dashboard to review integration coverage, captured products, maturity, and prioritized risks.
       - Continue to Import, Capture, Catalog, Map, or BOM & Cost for the decision you need to make.
-    steps_es:
-      - Abre Projects y selecciona o crea el espacio de evaluación.
-      - Entra al dashboard del proyecto para revisar cobertura, productos capturados, madurez y riesgos priorizados.
-      - Continúa a Import, Capture, Catalog, Map o BOM & Cost según la decisión que necesites.
     routes:
       - /
       - /projects
@@ -71,17 +59,11 @@ sections:
   - id: import
     name: Import
     purpose: Ingest an official or external workbook through governed parsing, mapping review, lineage preservation, and controlled catalog materialization.
-    purpose_es: Ingerir un workbook oficial o externo mediante parsing gobernado, revisión de mapeo, preservación de linaje y materialización controlada en el catálogo.
     when_to_use: Use Import when integration information already exists in a workbook or when an external file needs explicit mapping decisions before catalog creation.
-    when_to_use_es: Usa Import cuando la información ya existe en un workbook o un archivo externo requiere decisiones explícitas de mapeo antes de crear el catálogo.
     steps:
       - Download the official template or choose a workbook to upload.
       - Review the staged mapping contract and resolve each ambiguous external column by mapping it to an existing governed attribute or explicitly excluding it.
       - Approve the mapping contract, then inspect loaded, technical-only, and excluded rows with their source lineage.
-    steps_es:
-      - Descarga el template oficial o selecciona el workbook que vas a cargar.
-      - Revisa el contrato de mapeo y resuelve cada columna ambigua asignándola a un atributo gobernado existente o excluyéndola explícitamente.
-      - Aprueba el mapeo y revisa las filas cargadas, técnicas y excluidas con su linaje.
     routes: ["/projects/[projectId]/import"]
     endpoints:
       - { method: POST, path: "/api/v1/imports/{project_id}" }
@@ -98,7 +80,7 @@ sections:
         media_types: [application/vnd.openxmlformats-officedocument.spreadsheetml.sheet]
     entities: [ImportBatch, ImportMappingProfile, SourceIntegrationRow, CatalogIntegration]
     supported_actions: [download template, upload workbook, review mappings, approve mapping contract, inspect source rows, remove import batch]
-    unsupported_claims: [silently repair ambiguous source data, accept workbook formulas, create arbitrary target fields during import, crear campos arbitrarios durante la importación, bypass mapping approval]
+    unsupported_claims: [silently repair ambiguous source data, accept workbook formulas, create arbitrary target fields during import, bypass mapping approval]
     keywords: [import, importar, workbook, archivo, template, external file, mapping, lineage, spreadsheet, rows, filas]
 
   - id: capture-review
@@ -128,17 +110,11 @@ sections:
   - id: capture
     name: Capture
     purpose: Create one governed catalog integration manually through a guided five-step workflow when no workbook import is needed.
-    purpose_es: Crear manualmente una integración gobernada mediante un flujo guiado de cinco pasos cuando no se necesita importar un workbook.
     when_to_use: Use Capture when the architect needs to enter one integration directly, validate its required source and destination evidence, inspect potential duplicates, and review QA readiness before catalog creation.
-    when_to_use_es: Usa Capture para registrar directamente una integración, validar la evidencia obligatoria de origen y destino, revisar posibles duplicados y confirmar su preparación de QA antes de crearla en el catálogo.
     steps:
       - Enter integration identity: brand, business process, and interface name.
       - Capture source and destination systems, then review any potential duplicate route matches.
       - Complete technical sizing and final review before creating the governed catalog record.
-    steps_es:
-      - Captura la identidad de la integración: marca, proceso de negocio y nombre de interfaz.
-      - Registra origen y destino, y revisa los posibles duplicados de esa ruta.
-      - Completa el dimensionamiento técnico y la revisión final antes de crear el registro gobernado en el catálogo.
     routes:
       - /projects/[projectId]/capture
       - /projects/[projectId]/capture/new
@@ -154,17 +130,11 @@ sections:
   - id: catalog
     name: Catalog and QA
     purpose: Maintain the governed integration record, source lineage, architecture fields, QA reasons, volumetry inputs, pattern assignment, and saved design canvas for each integration.
-    purpose_es: Mantener por integración el registro gobernado, linaje de origen, campos de arquitectura, razones de QA, entradas de volumetría, patrón y diseño guardado.
     when_to_use: Use Catalog and QA to search integration records, remediate evidence gaps, review one integration, or recalculate technical results.
-    when_to_use_es: Usa Catalog and QA para buscar integraciones, corregir brechas de evidencia, revisar una línea o recalcular resultados técnicos.
     steps:
       - Filter or search the catalog to locate the integration or QA condition.
       - Open an integration to inspect source data, lineage, QA reasons, selected pattern, volumetry, and canvas.
       - Apply explicit architect-owned changes, refresh QA, and recalculate when the governed inputs are ready.
-    steps_es:
-      - Filtra o busca el catálogo para localizar la integración o condición de QA.
-      - Abre la integración y revisa fuente, linaje, razones de QA, patrón, volumetría y canvas.
-      - Guarda cambios explícitos del arquitecto, actualiza QA y recalcula cuando la evidencia esté lista.
     routes:
       - /projects/[projectId]/catalog
       - /projects/[projectId]/catalog/[integrationId]
@@ -187,9 +157,7 @@ sections:
   - id: patterns
     name: Patterns
     purpose: Govern the reusable, tool-agnostic integration patterns that guide architecture selection, QA explanations, canvas recommendations, and exports.
-    purpose_es: Gobernar patrones de integración reutilizables e independientes de herramientas que orientan selección de arquitectura, QA, recomendaciones del canvas y exports.
     when_to_use: Use Patterns to understand when a pattern applies, its anti-pattern, technical flow, business value, and certified implementation guidance.
-    when_to_use_es: Usa Patterns para entender cuándo aplica un patrón, su anti-patrón, flujo técnico, valor de negocio y guía certificada.
     steps:
       - Open Patterns and select a pattern by code or name.
       - Review its description, when-to-use guidance, anti-pattern, flow, supported status, and mapped services.
@@ -208,9 +176,7 @@ sections:
   - id: library
     name: Library
     purpose: Provide the administration hub for governed patterns, Service Products, dictionaries, assumptions, and deterministic synthetic validation assets.
-    purpose_es: Proveer el centro de administración para patrones, Service Products, diccionarios, supuestos y activos de validación sintética gobernados.
     when_to_use: Use Library when the shared reference data that governs every project must be inspected or maintained.
-    when_to_use_es: Usa Library cuando necesites consultar o mantener los datos de referencia compartidos que gobiernan todos los proyectos.
     steps:
       - Open Library and choose the reference category you need.
       - Inspect its current version, evidence, limits, interoperability, or synthetic validation history.
@@ -277,7 +243,6 @@ sections:
   - id: pricing
     name: Pricing
     purpose: Govern Oracle commercial evidence from source capture through classification, deterministic validation, human approval, immutable release, and BOM calculation readiness.
-    purpose_es: Gobernar la evidencia comercial Oracle desde su captura y clasificación hasta la validación, aprobación humana, release inmutable y preparación para el cálculo del BOM.
     when_to_use: Use Pricing to synchronize public prices, inspect SKU identity and terms, resolve review candidates, approve commercial evidence, and publish a release that BOM can consume.
     steps:
       - Inspect the active sources, snapshots, documents, candidates, exceptions, and product coverage.
@@ -300,7 +265,6 @@ sections:
   - id: bom
     name: BOM & Cost
     purpose: Convert approved technical demand into deployment-aware OCI quantities and an immutable cost estimate using approved products, SKUs, commercial rules, environments, and monthly activation ramps.
-    purpose_es: Convertir demanda técnica aprobada en cantidades OCI conscientes del despliegue y una estimación inmutable usando productos, SKUs, reglas comerciales, ambientes y rampas mensuales.
     when_to_use: Use BOM and Cost after technical inputs and commercial coverage are ready to compare deployment scenarios, calculate monthly consumption, and publish a governed planning estimate.
     steps:
       - Create or open a deployment scenario and define region, currency, contract timing, environments, products, exact commercial variants, metrics, quantities, and activation schedules.
@@ -331,7 +295,6 @@ sections:
   - id: agents
     name: Agents
     purpose: Monitor governed OCI Generative AI agents, their authorized evidence tools, execution states, provider telemetry, proposals, and explicit human decisions.
-    purpose_es: Monitorear agentes gobernados de OCI Generative AI, sus herramientas de evidencia, estados de ejecución, telemetría, propuestas y decisiones humanas.
     when_to_use: Use Agents to inspect why an agent produced an outcome, monitor runtime health, cancel active work, or decide an approval-gated proposal.
     steps:
       - Open Agent Operations and review provider readiness, resilience signals, definitions, and retained executions.
@@ -374,14 +337,6 @@ sections:
     keywords: [ai review, architecture review, readiness, remediation, recommendation, drift, stress, decision brief]
 
 semantic_examples:
-  - { id: concept-app-overview-es, text: "¿Qué resuelve OCI DIS Architect?", section_id: projects, intent: concept_explanation, mode: knowledge, answer: "OCI DIS Architect convierte catálogos de integraciones en evidencia gobernada para importar, normalizar, revisar QA, calcular volumetría, diseñar topología y preparar escenarios BOM sin perder linaje ni control humano." }
-  - { id: concept-project-es, text: "¿Qué es un proyecto dentro de la aplicación?", section_id: projects, intent: concept_explanation, mode: knowledge, answer: "Un proyecto es el espacio aislado de una evaluación de arquitectura: reúne sus integraciones, importaciones, dashboard técnico, topología, escenarios y artefactos gobernados." }
-  - { id: concept-dashboard-es, text: "¿Qué información muestra el Dashboard?", section_id: projects, intent: concept_explanation, mode: knowledge, answer: "El Dashboard resume la evidencia técnica del proyecto: cobertura, completitud, mezcla de patrones, distribución de payload, madurez y riesgos priorizados desde el snapshot vigente." }
-  - { id: concept-topology-es, text: "¿Para qué sirve el mapa de topología?", section_id: projects, intent: concept_explanation, mode: knowledge, answer: "El mapa muestra las dependencias de origen a destino del catálogo y permite investigar sistemas, vecinos, rutas y concentraciones de integraciones dentro del proyecto." }
-  - { id: workflow-volumetry-es, text: "¿Cómo calculo la volumetría de las integraciones?", section_id: catalog, intent: workflow_guidance, mode: knowledge }
-  - { id: concept-service-product-es, text: "¿Qué representa un Service Product en la App?", section_id: library, intent: concept_explanation, mode: knowledge, answer: "Un Service Product es el perfil gobernado de una capacidad OCI que centraliza límites, interoperabilidad, reglas técnicas y preparación comercial para que diseño, cálculo y BOM consuman la misma fuente." }
-  - { id: concept-assistant-es, text: "¿Cómo utiliza contexto el asistente general?", section_id: agents, intent: concept_explanation, mode: knowledge, answer: "El asistente recupera conocimiento gobernado y contexto explícito de la App para responder; la conversación ayuda a resolver referencias, pero las respuestas previas del modelo nunca se convierten en evidencia factual." }
-  - { id: concept-app-exports-es, text: "¿Qué puedo exportar desde la App y qué evidencia conserva?", section_id: bom, intent: concept_explanation, mode: knowledge, answer: "Los formatos dependen del artefacto: el catálogo de integraciones se exporta como XLSX y conserva sus campos gobernados y linaje; el BOM se exporta como XLSX, JSON o PDF y conserva el snapshot inmutable con SKU, unidad, cantidad, tier, precio, advertencias y proveniencia; Architecture Review y el executive brief se exportan como Markdown con su evidencia gobernada." }
   - { id: section-projects, text: "What is the Projects workspace for?", section_id: projects, intent: concept_explanation, mode: knowledge }
   - { id: section-import, text: "What is the Import section for?", section_id: import, intent: concept_explanation, mode: knowledge }
   - { id: section-capture, text: "What is the guided Capture workspace for?", section_id: capture, intent: concept_explanation, mode: knowledge }
@@ -395,9 +350,10 @@ semantic_examples:
   - { id: section-bom, text: "What is BOM & Cost for?", section_id: bom, intent: concept_explanation, mode: knowledge }
   - { id: section-agents, text: "What is the Agents workspace for?", section_id: agents, intent: concept_explanation, mode: knowledge }
   - { id: workflow-import, text: "How do I import an integration workbook?", section_id: import, intent: workflow_guidance, mode: knowledge }
-  - { id: workflow-import-review-es, text: "¿Cómo importo un archivo y reviso qué filas quedaron fuera?", section_id: import, intent: workflow_guidance, mode: knowledge }
-  - { id: workflow-capture-vs-import-es, text: "¿Cuándo debo usar Capture en vez de Import?", section_id: capture, intent: workflow_guidance, mode: knowledge }
-  - { id: workflow-capture-review-es, text: "¿Cómo reviso y normalizo un archivo externo sin importarlo directamente?", section_id: capture-review, intent: workflow_guidance, mode: knowledge }
+  # Input-only multilingual retrieval aliases. They intentionally contain no
+  # answer content; every governed App response remains English.
+  - { id: workflow-import-review-input-es, text: "¿Cómo importo un archivo y reviso qué filas quedaron fuera?", section_id: import, intent: workflow_guidance, mode: knowledge }
+  - { id: workflow-capture-vs-import-input-es, text: "¿Cuándo debo usar Capture en vez de Import?", section_id: capture, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-create-scenario, text: "How do I create a deployment scenario?", section_id: bom, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-generate-bom, text: "How do I generate a governed BOM?", section_id: bom, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-approve-commercial, text: "How do I approve a commercial catalog release?", section_id: pricing, intent: workflow_guidance, mode: knowledge }
@@ -406,7 +362,7 @@ semantic_examples:
   - { id: workflow-review-qa, text: "How do I review and resolve QA findings?", section_id: catalog, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-compare-bom, text: "How do I compare two BOM snapshots?", section_id: bom, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-rate-card, text: "How do I import an authorized customer rate card?", section_id: pricing, intent: workflow_guidance, mode: knowledge }
-  - { id: workflow-named-service-pricing-es, text: "¿Cómo se cobra OCI Functions a un cliente?", section_id: pricing, intent: workflow_guidance, mode: knowledge }
+  - { id: workflow-named-service-pricing-input-es, text: "¿Cómo se cobra OCI Functions a un cliente?", section_id: pricing, intent: workflow_guidance, mode: knowledge }
   - { id: workflow-ai-review, text: "How do I run an Architecture AI Review?", section_id: ai-review, intent: workflow_guidance, mode: knowledge }
   - { id: capability-pdf-export, text: "Can I export a governed BOM as PDF?", section_id: bom, intent: capability_inquiry, mode: knowledge, capability_status: documented, answer: "export PDF" }
   - { id: capability-xlsx-export, text: "Can I export a BOM as XLSX?", section_id: bom, intent: capability_inquiry, mode: knowledge, capability_status: documented, answer: "export XLSX" }
@@ -421,13 +377,12 @@ semantic_examples:
   - { id: absent-provision, text: "Can the App automatically provision the OCI resources in a BOM?", section_id: bom, intent: capability_inquiry, mode: knowledge, capability_status: not_documented, answer: "automatically provision OCI resources" }
   - { id: absent-slack, text: "Can the App send Architecture Review results to Slack?", section_id: ai-review, intent: capability_inquiry, mode: knowledge, capability_status: not_documented, answer: "send Architecture Review results to Slack" }
   - { id: concept-sku, text: "What is an OCI SKU in this App?", section_id: pricing, intent: concept_explanation, mode: knowledge, answer: "A SKU is an Oracle commercial unit identified by part number, billing metric, edition or license terms, and governed pricing evidence." }
-  - { id: concept-license-model-es, text: "¿Qué significa License Included o BYOL en un escenario?", section_id: bom, intent: concept_explanation, mode: knowledge, answer: "License Included incorpora el derecho de uso de software aplicable en la tarifa del servicio. BYOL usa licencias Oracle elegibles del cliente y requiere validar los términos y ratios de conversión antes de cotizar." }
+  - { id: concept-license-model-input-es, text: "¿Qué significa License Included o BYOL en un escenario?", section_id: bom, intent: concept_explanation, mode: knowledge }
   - { id: concept-scenario-snapshot, text: "What is the difference between a deployment scenario and a BOM snapshot?", section_id: bom, intent: concept_explanation, mode: knowledge, answer: "A deployment scenario is the editable approved plan for environments, products, metrics, quantities, and timing. A BOM snapshot is the immutable calculated result produced from that scenario and its exact technical and commercial evidence." }
   - { id: concept-sku-choice, text: "How is a SKU selected for a product and environment?", section_id: pricing, intent: concept_explanation, mode: knowledge, answer: "The App resolves a SKU deterministically from an approved product mapping and its environment predicates, such as edition, license model, metric, and commercial release." }
   - { id: concept-quote-ready, text: "What does quote-ready mean?", section_id: pricing, intent: concept_explanation, mode: knowledge, answer: "Quote-ready means the required commercial terms, rule fixtures, product mappings, release membership, and scenario inputs are approved with no open blockers. It does not turn the planning estimate into an Oracle quote." }
   - { id: concept-commercial-release, text: "What is a commercial release?", section_id: pricing, intent: concept_explanation, mode: knowledge, answer: "A commercial release is an immutable approved catalog scope of SKUs and governed rules that the BOM engine is allowed to consume." }
-  - { id: concept-pattern-es, text: "Explica el patrón Request and Reply", section_id: patterns, intent: concept_explanation, mode: knowledge, answer: "Request and Reply es una interacción síncrona: el consumidor envía una solicitud y espera la respuesta del sistema destino en la misma conversación. Conviene cuando el resultado debe ser inmediato; no cuando el proceso es largo, desacoplado o tolera respuesta posterior." }
-  - { id: concept-agents-boundary-es, text: "¿Qué hacen los agentes de OCI DIS y qué no pueden cambiar?", section_id: agents, intent: concept_explanation, mode: knowledge, answer: "Los agentes analizan evidencia gobernada, generan propuestas y registran su ejecución. No pueden ejecutar SQL arbitrario, publicar cambios sin la autorización exigida por el flujo ni convertir razonamiento del modelo en evidencia." }
+  - { id: concept-agents-boundary-input-es, text: "¿Qué hacen los agentes de OCI DIS y qué no pueden cambiar?", section_id: agents, intent: concept_explanation, mode: knowledge }
   - { id: boundary-weather, text: "What is the weather today?", section_id: "", intent: unsupported_or_out_of_scope, mode: boundary }
   - { id: boundary-poem, text: "Write me a poem about summer.", section_id: "", intent: unsupported_or_out_of_scope, mode: boundary }
   - { id: boundary-capital, text: "What is the capital of France?", section_id: "", intent: unsupported_or_out_of_scope, mode: boundary }

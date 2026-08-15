@@ -4,5 +4,5 @@ export const parityBenchmark = {
   loadedRows: 144,
   excludedRows: 13,
   tbqRows: 157,
-  qaRevisar: 144,
+  qaReview: 144,
 } as const;

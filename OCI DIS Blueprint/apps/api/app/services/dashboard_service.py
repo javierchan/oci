@@ -364,7 +364,7 @@ def _build_charts(
 
     completeness = CompletenessChart(
         qa_ok=sum(1 for row in rows if row.qa_status == "OK"),
-        qa_revisar=sum(1 for row in rows if row.qa_status == "REVISAR"),
+        qa_review=sum(1 for row in rows if row.qa_status == "REVIEW"),
         qa_pending=sum(1 for row in rows if row.qa_status == "PENDING"),
         rationale_informed=sum(1 for row in rows if _has_text(row.pattern_rationale)),
         core_tools_informed=sum(1 for row in rows if _has_text(row.core_tools)),

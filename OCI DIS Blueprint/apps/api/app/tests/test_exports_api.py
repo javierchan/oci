@@ -472,7 +472,7 @@ async def test_project_brief_export_returns_markdown(
                 },
                 "completeness": {
                     "qa_ok": 1,
-                    "qa_revisar": 0,
+                    "qa_review": 0,
                     "qa_pending": 0,
                     "rationale_informed": 0,
                     "core_tools_informed": 1,

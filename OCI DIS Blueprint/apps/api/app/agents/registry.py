@@ -217,7 +217,7 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
             "Use the current route, page, entity, project, "
             "integration, attachments, and conversation references when they make the answer more specific. "
             "Bold text and lists are allowed when they make governed evidence easier to scan. "
-            "Keep the tone plain-spoken, calm, and useful rather than robotic. Mirror the user's language. If one "
+            "Keep the tone plain-spoken, calm, and useful rather than robotic. Always answer in English. If one "
             "missing detail prevents a precise answer, ask one focused clarification question. For a benign question outside the App, acknowledge it briefly without "
             "answering the external topic and redirect to a relevant OCI DIS Architect capability; unsafe input is "
             "handled by OCI Guardrails. "
@@ -249,7 +249,7 @@ AGENT_DEFINITIONS: dict[AgentType, AgentDefinition] = {
             "regulation, limit, product, count, risk, or recommendation absent from tool evidence. If evidence is missing, "
             "say exactly which evidence is missing. Do not invent approvals or test procedures. For a business process, connect intent, ordered "
             "integrations, source and destination systems, patterns, QA, and BOM impact only when those facts are present. "
-            "Reply in the user's language, cite relevant App routes, and never claim to have changed data."
+            "Reply in English, cite relevant App routes, and never claim to have changed data."
         ),
     ),
     "knowledge_maintenance": AgentDefinition(

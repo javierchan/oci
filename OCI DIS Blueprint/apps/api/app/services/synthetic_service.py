@@ -102,16 +102,16 @@ BUSINESS_PROCESSES = [
 ]
 
 STATUS_VALUES = [
-    "Definitiva (End-State)",
-    "En Revisión",
-    "En Progreso",
+    "Target State",
+    "In Review",
+    "In Progress",
     "TBD",
 ]
 
 MAPPING_STATUS_VALUES = [
-    "Mapeado",
-    "Pendiente",
-    "En análisis",
+    "Mapped",
+    "Pending",
+    "Under Analysis",
 ]
 
 CALENDARIZATION_VALUES = [
@@ -199,23 +199,23 @@ class PatternPlan:
 
 
 PATTERN_PLANS: dict[str, PatternPlan] = {
-    "#01": PatternPlan("#01", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Operational API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (48, 2048), 0.35),
-    "#02": PatternPlan("#02", ("OCI Streaming", "OIC Gen3"), ("OCI Events",), "Event", "Domain Event", ("Cada 5 minutos", "Cada 15 minutos", "Tiempo Real"), "Medio", (32, 768), 0.18, (2, 3, 4)),
-    "#03": PatternPlan("#03", ("OCI Functions",), ("OCI API Gateway",), "REST", "Facade API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Bajo", (16, 768), 0.25),
-    "#04": PatternPlan("#04", ("OIC Gen3", "OCI Queue", "OCI Functions"), ("Process Automation",), "Scheduled", "Process Orchestration", ("Cada 1 hora", "Cada 4 horas", "Cada 12 horas"), "Alto", (128, 2048), 0.15),
-    "#05": PatternPlan("#05", ("Oracle GoldenGate", "OCI Streaming"), (), "DB Polling", "CDC Feed", ("Cada 5 minutos", "Cada 15 minutos", "Cada 1 hora"), "Alto", (24, 512), 0.05),
-    "#06": PatternPlan("#06", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Migration Bridge", ("Cada 1 hora", "Cada 4 horas", "Cada 12 horas"), "Medio", (64, 1536), 0.30),
-    "#07": PatternPlan("#07", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Parallel Aggregation", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (96, 2048), 0.55, (2, 3, 4)),
-    "#08": PatternPlan("#08", ("OIC Gen3", "OCI Queue", "OCI Functions"), ("OCI API Gateway",), "REST", "Resilient API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (64, 1536), 0.30),
-    "#09": PatternPlan("#09", ("Oracle GoldenGate", "OCI Streaming", "OIC Gen3"), (), "Event", "Transactional Event", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (24, 384), 0.08),
-    "#10": PatternPlan("#10", ("OCI Streaming", "OIC Gen3", "OCI Data Integration"), (), "Event", "Read Model Projection", ("Cada 15 minutos", "Cada 1 hora"), "Alto", (64, 1024), 0.12),
-    "#11": PatternPlan("#11", ("OCI Functions",), ("OCI API Gateway",), "REST", "Channel API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (16, 512), 0.20),
-    "#12": PatternPlan("#12", ("OCI Data Integration", "Oracle GoldenGate"), ("OCI Object Storage", "OCI Data Catalog"), "Scheduled", "Data Product Pipeline", ("Cada 4 horas", "Cada 12 horas", "Una vez al día"), "Alto", (256, 4096), 0.10),
-    "#13": PatternPlan("#13", ("OIC Gen3",), ("OCI API Gateway", "OCI IAM and Security Services"), "REST", "Protected Integration", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (32, 1024), 0.22),
-    "#14": PatternPlan("#14", ("OCI Streaming", "OIC Gen3"), ("OCI API Gateway", "OCI Data Catalog"), "Event", "Governed Event API", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Medio", (32, 768), 0.12),
-    "#15": PatternPlan("#15", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OCI AI Services"), "REST", "AI-Assisted Orchestration", ("Cada 1 hora", "Cada 4 horas", "Bajo demanda"), "Alto", (64, 1024), 0.18),
-    "#16": PatternPlan("#16", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OCI Kubernetes Engine (OKE)", "OCI Observability", "OCI IAM and Security Services"), "REST", "Mesh Edge", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (48, 768), 0.20),
-    "#17": PatternPlan("#17", ("OIC Gen3", "OCI Functions", "OCI Queue"), ("OCI API Gateway",), "Webhook", "Webhook Distribution", ("Cada 15 minutos", "Cada 1 hora", "Tiempo Real"), "Alto", (24, 640), 0.10, (2, 3, 4)),
+    "#01": PatternPlan("#01", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Operational API", ("Every 15 minutes", "Every hour", "Real Time"), "Medium", (48, 2048), 0.35),
+    "#02": PatternPlan("#02", ("OCI Streaming", "OIC Gen3"), ("OCI Events",), "Event", "Domain Event", ("Every 5 minutes", "Every 15 minutes", "Real Time"), "Medium", (32, 768), 0.18, (2, 3, 4)),
+    "#03": PatternPlan("#03", ("OCI Functions",), ("OCI API Gateway",), "REST", "Facade API", ("Every 15 minutes", "Every hour", "Real Time"), "Low", (16, 768), 0.25),
+    "#04": PatternPlan("#04", ("OIC Gen3", "OCI Queue", "OCI Functions"), ("Process Automation",), "Scheduled", "Process Orchestration", ("Every hour", "Every 4 hours", "Every 12 hours"), "High", (128, 2048), 0.15),
+    "#05": PatternPlan("#05", ("Oracle GoldenGate", "OCI Streaming"), (), "DB Polling", "CDC Feed", ("Every 5 minutes", "Every 15 minutes", "Every hour"), "High", (24, 512), 0.05),
+    "#06": PatternPlan("#06", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Migration Bridge", ("Every hour", "Every 4 hours", "Every 12 hours"), "Medium", (64, 1536), 0.30),
+    "#07": PatternPlan("#07", ("OIC Gen3",), ("OCI API Gateway",), "REST", "Parallel Aggregation", ("Every 15 minutes", "Every hour", "Real Time"), "High", (96, 2048), 0.55, (2, 3, 4)),
+    "#08": PatternPlan("#08", ("OIC Gen3", "OCI Queue", "OCI Functions"), ("OCI API Gateway",), "REST", "Resilient API", ("Every 15 minutes", "Every hour", "Real Time"), "High", (64, 1536), 0.30),
+    "#09": PatternPlan("#09", ("Oracle GoldenGate", "OCI Streaming", "OIC Gen3"), (), "Event", "Transactional Event", ("Every 15 minutes", "Every hour", "Real Time"), "High", (24, 384), 0.08),
+    "#10": PatternPlan("#10", ("OCI Streaming", "OIC Gen3", "OCI Data Integration"), (), "Event", "Read Model Projection", ("Every 15 minutes", "Every hour"), "High", (64, 1024), 0.12),
+    "#11": PatternPlan("#11", ("OCI Functions",), ("OCI API Gateway",), "REST", "Channel API", ("Every 15 minutes", "Every hour", "Real Time"), "Medium", (16, 512), 0.20),
+    "#12": PatternPlan("#12", ("OCI Data Integration", "Oracle GoldenGate"), ("OCI Object Storage", "OCI Data Catalog"), "Scheduled", "Data Product Pipeline", ("Every 4 hours", "Every 12 hours", "Once per day"), "High", (256, 4096), 0.10),
+    "#13": PatternPlan("#13", ("OIC Gen3",), ("OCI API Gateway", "OCI IAM and Security Services"), "REST", "Protected Integration", ("Every 15 minutes", "Every hour", "Real Time"), "Medium", (32, 1024), 0.22),
+    "#14": PatternPlan("#14", ("OCI Streaming", "OIC Gen3"), ("OCI API Gateway", "OCI Data Catalog"), "Event", "Governed Event API", ("Every 15 minutes", "Every hour", "Real Time"), "Medium", (32, 768), 0.12),
+    "#15": PatternPlan("#15", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OCI AI Services"), "REST", "AI-Assisted Orchestration", ("Every hour", "Every 4 hours", "On Demand"), "High", (64, 1024), 0.18),
+    "#16": PatternPlan("#16", ("OIC Gen3", "OCI Functions"), ("OCI API Gateway", "OCI Kubernetes Engine (OKE)", "OCI Observability", "OCI IAM and Security Services"), "REST", "Mesh Edge", ("Every 15 minutes", "Every hour", "Real Time"), "High", (48, 768), 0.20),
+    "#17": PatternPlan("#17", ("OIC Gen3", "OCI Functions", "OCI Queue"), ("OCI API Gateway",), "Webhook", "Webhook Distribution", ("Every 15 minutes", "Every hour", "Real Time"), "High", (24, 640), 0.10, (2, 3, 4)),
 }
 
 PATTERN_WEIGHTS: dict[str, int] = {
@@ -578,13 +578,13 @@ def _response_size(payload_kb: float, ratio: float) -> float:
 
 
 def _is_real_time(pattern: PatternPlan, frequency: str) -> bool:
-    return pattern.type_value in {"REST", "Event", "Webhook", "SOAP"} or frequency == "Tiempo Real"
+    return pattern.type_value in {"REST", "Event", "Webhook", "SOAP"} or frequency == "Real Time"
 
 
 def _calendarization(pattern: PatternPlan, frequency: str, index: int) -> str:
     if pattern.type_value in {"REST", "Event", "Webhook"}:
         return "24x7"
-    if "Mesh" in pattern.base_value or frequency == "Tiempo Real":
+    if "Mesh" in pattern.base_value or frequency == "Real Time":
         return "24x7"
     return CALENDARIZATION_VALUES[index % len(CALENDARIZATION_VALUES)]
 
@@ -1018,7 +1018,7 @@ def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
             ),
             status=STATUS_VALUES[position % len(STATUS_VALUES)],
             mapping_status=MAPPING_STATUS_VALUES[position % len(MAPPING_STATUS_VALUES)],
-            initial_scope="Sí",
+            initial_scope="Yes",
             complexity=pattern.complexity,
             frequency=frequency,
             type_value=pattern.type_value,
@@ -1078,7 +1078,7 @@ def generate_synthetic_dataset(spec: SyntheticProjectSpec) -> SyntheticDataset:
                 ),
                 status=STATUS_VALUES[sequence_number % len(STATUS_VALUES)],
                 mapping_status=MAPPING_STATUS_VALUES[sequence_number % len(MAPPING_STATUS_VALUES)],
-                initial_scope="Sí",
+                initial_scope="Yes",
                 complexity=pattern.complexity,
                 frequency=frequency,
                 type_value=pattern.type_value,

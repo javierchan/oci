@@ -146,7 +146,7 @@ function edgeStatusKey(status: string): "ok" | "review" | "mixed" | "pending" {
   if (status === "OK") {
     return "ok";
   }
-  if (status === "REVISAR") {
+  if (status === "REVIEW") {
     return "review";
   }
   if (status === "PENDING") {
@@ -930,7 +930,7 @@ export function IntegrationGraph({
               {colorMode === "qa" ? (
                 <div className="mt-2 space-y-1.5">
                   <div className="flex items-center justify-between gap-3"><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#15803d]" />OK</span><span>{qaTotals.ok}</span></div>
-                  <div className="flex items-center justify-between gap-3"><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#b45309]" />{displayQaStatus("REVISAR")}</span><span>{qaTotals.review}</span></div>
+                  <div className="flex items-center justify-between gap-3"><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#b45309]" />{displayQaStatus("REVIEW")}</span><span>{qaTotals.review}</span></div>
                   <div className="flex items-center justify-between gap-3"><span className="inline-flex items-center gap-2"><span className="h-2.5 w-2.5 rounded-full bg-[#b91c1c]" />{displayQaStatus("PENDING")}</span><span>{qaTotals.pending}</span></div>
                 </div>
               ) : (

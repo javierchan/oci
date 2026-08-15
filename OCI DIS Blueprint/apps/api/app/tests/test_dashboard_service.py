@@ -32,10 +32,10 @@ def _row(**overrides: object) -> CatalogIntegration:
 
 def test_build_charts_marks_sparse_payload_coverage_as_low_confidence() -> None:
     rows = [
-        _row(interface_id=None, payload_per_execution_kb=None, qa_status="REVISAR"),
-        _row(seq_number=2, interface_id=None, payload_per_execution_kb=None, qa_status="REVISAR"),
+        _row(interface_id=None, payload_per_execution_kb=None, qa_status="REVIEW"),
+        _row(seq_number=2, interface_id=None, payload_per_execution_kb=None, qa_status="REVIEW"),
         _row(seq_number=3, payload_per_execution_kb=64.0),
-        _row(seq_number=4, payload_per_execution_kb=None, qa_status="REVISAR"),
+        _row(seq_number=4, payload_per_execution_kb=None, qa_status="REVIEW"),
     ]
 
     charts = cast(dict[str, Any], dashboard_service._build_charts(rows, {"#02": "Event Backbone"}))

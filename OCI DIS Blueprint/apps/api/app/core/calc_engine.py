@@ -23,7 +23,16 @@ def _ensure_calc_engine_path() -> None:
 
 _ensure_calc_engine_path()
 
-from engine.importer import HEADER_ALIASES, ImportResult, NormalizationEvent, ParsedRow, detect_header_row, parse_rows  # noqa: E402
+from engine.importer import (  # noqa: E402
+    HEADER_ALIASES,
+    ImportResult,
+    NormalizationEvent,
+    ParsedRow,
+    detect_header_row,
+    normalize_controlled_value,
+    normalize_frequency,
+    parse_rows,
+)
 from engine.qa import QAResult, evaluate_qa, normalize_trigger_type  # noqa: E402
 from engine.pattern_certification import (  # noqa: E402
     CERTIFICATION_VERSION,
@@ -88,6 +97,8 @@ __all__ = [
     "functions_invocations_per_month",
     "get_pattern_certification",
     "normalize_trigger_type",
+    "normalize_controlled_value",
+    "normalize_frequency",
     "normalize_payload_to_kb",
     "oic_billing_messages_per_execution",
     "oic_billing_messages_per_month",

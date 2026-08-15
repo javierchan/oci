@@ -37,6 +37,7 @@ export default function AdminDictionaryCategoryPage({
   const { category: rawCategory } = use(params);
   const router = useRouter();
   const category = normalizeDictionaryCategory(rawCategory);
+  const isSystemContract = category === "QA_STATUS";
   const [options, setOptions] = useState<DictOption[]>([]);
   const [loading, setLoading] = useState<boolean>(true);
   const [saving, setSaving] = useState<boolean>(false);
@@ -159,7 +160,7 @@ export default function AdminDictionaryCategoryPage({
             />
           </div>
         </div>
-        <button
+        {!isSystemContract ? <button
           type="button"
           onClick={() => {
             setShowCreate(true);
@@ -169,7 +170,9 @@ export default function AdminDictionaryCategoryPage({
           className="app-button-primary"
         >
           New Option
-        </button>
+        </button> : (
+          <span className="app-theme-chip">System workflow contract</span>
+        )}
       </section>
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -325,29 +328,35 @@ export default function AdminDictionaryCategoryPage({
                   </div>
                 </dl>
                 <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setShowCreate(false);
-                      setEditingOption(option);
-                      setError("");
-                    }}
-                    className="app-button-secondary inline-flex items-center gap-2 px-3 py-2 text-sm"
-                  >
-                    <Pencil className="h-4 w-4" />
-                    Edit
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setDeletingOption(option);
-                      setError("");
-                    }}
-                    className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"
-                  >
-                    <Trash2 className="h-4 w-4" />
-                    Delete
-                  </button>
+                  {isSystemContract ? (
+                    <span className="text-xs text-[var(--color-text-muted)]">Managed by the App</span>
+                  ) : (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setShowCreate(false);
+                          setEditingOption(option);
+                          setError("");
+                        }}
+                        className="app-button-secondary inline-flex items-center gap-2 px-3 py-2 text-sm"
+                      >
+                        <Pencil className="h-4 w-4" />
+                        Edit
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setDeletingOption(option);
+                          setError("");
+                        }}
+                        className="inline-flex items-center gap-2 rounded-lg border border-rose-200 bg-rose-50 px-3 py-2 text-sm font-semibold text-rose-700 transition hover:bg-rose-100 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                        Delete
+                      </button>
+                    </>
+                  )}
                 </div>
               </article>
             ))}

@@ -21,7 +21,7 @@ def _dominant_qa_status(counts: dict[str, int]) -> str:
 def _risk_qa_status(counts: dict[str, int]) -> str:
     """Return the most severe QA state represented on an edge."""
 
-    for status in ("PENDING", "REVISAR", "OK"):
+    for status in ("PENDING", "REVIEW", "OK"):
         if counts.get(status, 0) > 0:
             return status
     return "PENDING"
@@ -277,7 +277,7 @@ async def compute_graph(
                 qa_statuses=qa_counts,
                 dominant_qa_status=_dominant_qa_status(qa_counts),
                 risk_qa_status=risk_status,
-                risk_score=(qa_counts.get("PENDING", 0) * 100) + (qa_counts.get("REVISAR", 0) * 10) + len(cast_list(state["integration_ids"])),
+                risk_score=(qa_counts.get("PENDING", 0) * 100) + (qa_counts.get("REVIEW", 0) * 10) + len(cast_list(state["integration_ids"])),
                 interaction_mode=_combined_interaction_mode({str(mode) for mode in interaction_modes}),
                 total_executions_per_day=float(cast(Any, state["total_executions_per_day"])),
                 total_payload_per_execution_kb=float(cast(Any, state["total_payload_per_execution_kb"])),

@@ -1095,6 +1095,27 @@ Each milestone ends with **passing tests and a written diff**. Never skip ahead.
       `142` frontend tests and production build pass, Compose serves the rebuilt
       images, and the repository is synchronized with `origin/main`.
 
+### M82 — Canonical English Governance Contract
+- [x] Make `OK`, `REVIEW`, and `PENDING` the only App-owned QA workflow values;
+      remove the duplicate Spanish `REVISAR` option and protect the fixed system
+      dictionary from UI or API mutation.
+- [x] Resolve governed dictionary identity by stable `(category, code)`, enforce
+      that identity in PostgreSQL, and keep reference seeding idempotent.
+- [x] Normalize supported legacy workbook labels at the import boundary into
+      canonical English frequency, complexity, scope, lifecycle, and mapping
+      values before creating or updating a governed catalog record.
+- [x] Preserve original customer workbook rows and historical audit evidence
+      unchanged while migrating mutable catalog and derived workflow projections.
+- [x] Make App UI, API-generated narratives, synthetic records, exports, and
+      assistant-owned responses English-only; Spanish remains accepted only as
+      an internal input alias and is never a governed output value.
+- [x] Fail closed when an AI provider produces Spanish platform narrative instead
+      of allowing inconsistent language to appear in the assistant.
+- [x] **Exit criteria**: migration head `20260815_0062`, seed idempotence, zero
+      governed `REVISAR` values, canonical dictionary/data queries, API/calc/pricing
+      and frontend gates, OpenAPI/App Knowledge drift checks, rebuilt Compose,
+      responsive browser validation, and repository synchronization all pass.
+
 ### M46 — Connected BOM Rollout Explorer
 - [x] Replace the flat activation list with an executive rollout summary, coordinated
       monthly chart, progressive product/environment timeline, and product inspector

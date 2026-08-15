@@ -25,7 +25,7 @@ may also cache OCI Cohere Embed v4 vectors in the same artifact; the build
 script never sends a support question or customer evidence when generating
 that cache.
 
-The current production artifact contains `282/282` OCI provider vectors in one
+The current production artifact contains `265/265` OCI provider vectors in one
 `Cohere Embed v4.0` 512-dimension space. The local 384-dimension vectors remain
 packaged for build-time validation and unconfigured test environments; they are
 never mixed with OCI vectors in one similarity search and are not a production

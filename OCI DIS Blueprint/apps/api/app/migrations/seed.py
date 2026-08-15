@@ -1999,10 +1999,16 @@ def seed_patterns(session: Session) -> int:
 def seed_dictionary_options(session: Session) -> int:
     count = 0
     for option_data in DICTIONARY_OPTIONS:
+        code = cast(str | None, option_data.get("code"))
+        identity_filter = (
+            DictionaryOption.code == code
+            if code is not None
+            else DictionaryOption.value == option_data["value"]
+        )
         existing = session.scalar(
             select(DictionaryOption).where(
                 DictionaryOption.category == option_data["category"],
-                DictionaryOption.value == option_data["value"],
+                identity_filter,
             )
         )
         if existing is None:
@@ -2022,7 +2028,8 @@ def seed_dictionary_options(session: Session) -> int:
             _audit(session, "seed_insert", "dictionary_option", existing.id, option_data)
             count += 1
         else:
-            existing.code = cast(str | None, option_data.get("code"))
+            existing.code = code
+            existing.value = str(option_data["value"])
             existing.description = cast(str | None, option_data.get("description"))
             existing.executions_per_day = cast(float | None, option_data.get("executions_per_day"))
             existing.is_volumetric = cast(bool | None, option_data.get("is_volumetric"))

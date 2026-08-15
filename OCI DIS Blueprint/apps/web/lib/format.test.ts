@@ -16,7 +16,9 @@ describe("format display helpers", () => {
   });
 
   it("keeps imported source values English-normalized in the UI", () => {
+    expect(displayUiValue("REVISAR")).toBe("Review");
     expect(displayUiValue("Sí")).toBe("Yes");
+    expect(displayUiValue("Media")).toBe("Medium");
     expect(displayUiValue("Medio")).toBe("Medium");
     expect(displayUiValue("En Revisión")).toBe("In Review");
     expect(displayUiValue("Tiempo Real")).toBe("Real Time");

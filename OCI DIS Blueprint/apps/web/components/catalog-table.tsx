@@ -358,7 +358,7 @@ export function CatalogTable({
             >
               <option value="">All</option>
               <option value="OK">OK</option>
-              <option value="REVISAR">{displayQaStatus("REVISAR")}</option>
+              <option value="REVIEW">{displayQaStatus("REVIEW")}</option>
               <option value="PENDING">{displayQaStatus("PENDING")}</option>
             </select>
           </label>
@@ -463,7 +463,7 @@ export function CatalogTable({
           </div>
           <button
             type="button"
-            onClick={() => applySavedView({ id: "review", label: "QA review", search: "", qaStatus: "REVISAR", pattern: "", brand: "" })}
+            onClick={() => applySavedView({ id: "review", label: "QA review", search: "", qaStatus: "REVIEW", pattern: "", brand: "" })}
             className="app-button-secondary px-3 py-1.5 text-xs"
           >
             QA review
@@ -1025,7 +1025,7 @@ export function CatalogTable({
                           {selectedIntegration.qa_reasons.slice(0, 4).map((reason) => (
                             <div
                               key={reason}
-                              className="rounded-xl border border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
+                              className="rounded-xl border border-[var(--color-qa-review-border)] bg-[var(--color-qa-review-bg)] px-3 py-2 text-sm text-[var(--color-text-primary)]"
                             >
                               {reason.replace(/_/g, " ")}
                             </div>

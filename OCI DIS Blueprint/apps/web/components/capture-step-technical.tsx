@@ -151,10 +151,10 @@ export function CaptureStepTechnical({
           <span className="app-label mb-2 block">Business Criticality</span>
           <select value={form.business_criticality ?? ""} onChange={(event) => updateField("business_criticality", event.target.value)} className="app-input">
             <option value="">Not assessed</option>
-            <option value="Baja">Low</option>
-            <option value="Media">Medium</option>
-            <option value="Alta">High</option>
-            <option value="Crítica">Critical</option>
+            <option value="Low">Low</option>
+            <option value="Medium">Medium</option>
+            <option value="High">High</option>
+            <option value="Critical">Critical</option>
           </select>
         </label>
         <label className="block">
@@ -165,10 +165,10 @@ export function CaptureStepTechnical({
           <span className="app-label mb-2 block">Data Classification</span>
           <select value={form.data_security_classification ?? ""} onChange={(event) => updateField("data_security_classification", event.target.value)} className="app-input">
             <option value="">Not assessed</option>
-            <option value="Pública">Public</option>
-            <option value="Interna">Internal</option>
-            <option value="Confidencial">Confidential</option>
-            <option value="Restringida">Restricted</option>
+            <option value="Public">Public</option>
+            <option value="Internal">Internal</option>
+            <option value="Confidential">Confidential</option>
+            <option value="Restricted">Restricted</option>
           </select>
         </label>
         <label className="block md:col-span-2">

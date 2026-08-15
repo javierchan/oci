@@ -16,7 +16,7 @@ def test_active_row_without_formal_id_still_gets_qa_evaluation() -> None:
         is_active_row=True,
     )
 
-    assert result.status == "REVISAR"
+    assert result.status == "REVIEW"
     assert "MISSING_ID_FORMAL" not in result.reasons
     assert "MISSING_PAYLOAD" in result.reasons
 
@@ -70,7 +70,7 @@ def test_scatter_gather_exceeds_parallel_limit() -> None:
     )
 
     assert "SCATTER_GATHER_EXCEEDS_OIC_PARALLEL_LIMIT" in result.reasons
-    assert result.status == "REVISAR"
+    assert result.status == "REVIEW"
 
 
 def test_streaming_payload_exceeds_1mb() -> None:

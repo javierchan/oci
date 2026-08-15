@@ -87,7 +87,7 @@ function qaFromIntegrations(integrations: GraphIntegrationSummary[]): TopologyPu
     (totals, integration) => {
       if (integration.qa_status === "OK") {
         totals.ok += 1;
-      } else if (integration.qa_status === "REVISAR") {
+      } else if (integration.qa_status === "REVIEW") {
         totals.review += 1;
       } else {
         totals.pending += 1;
@@ -103,7 +103,7 @@ function qaFromEdges(edges: GraphEdge[]): TopologyPulseInsights["qa"] {
   return edges.reduce<TopologyPulseInsights["qa"]>(
     (totals, edge) => {
       totals.ok += edge.qa_statuses.OK ?? 0;
-      totals.review += edge.qa_statuses.REVISAR ?? 0;
+      totals.review += edge.qa_statuses.REVIEW ?? 0;
       totals.pending += edge.qa_statuses.PENDING ?? 0;
       totals.total += edge.integration_count;
       return totals;

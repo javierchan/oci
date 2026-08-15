@@ -552,20 +552,20 @@ def test_support_assistant_compares_numeric_values_not_number_formatting() -> No
     )
     assert output.quality.grounded is True
 
-    spanish_grouping = govern_agent_output(
+    localized_grouping = govern_agent_output(
         get_agent_definition("support_assistant"),
         (
-            "OCI Functions cuesta USD 0.1417 por 10.000 GB-seconds; "
-            "incluye 400.000 GB-memory-seconds."
+            "OCI Functions costs USD 0.1417 per 10.000 GB-seconds; "
+            "the governed allowance is 400.000 GB-memory-seconds."
         ),
         evidence,
         allow_fallback=False,
     )
-    assert spanish_grouping.quality.grounded is True
+    assert localized_grouping.quality.grounded is True
 
-    spanish_currency = govern_agent_output(
+    localized_currency = govern_agent_output(
         get_agent_definition("support_assistant"),
-        "El total gobernado es USD 86.609,30.",
+        "The governed total is USD 86.609,30.",
         {
             "project": {
                 "latest_bom": {
@@ -577,7 +577,7 @@ def test_support_assistant_compares_numeric_values_not_number_formatting() -> No
         },
         allow_fallback=False,
     )
-    assert spanish_currency.quality.grounded is True
+    assert localized_currency.quality.grounded is True
 
     invented = govern_agent_output(
         get_agent_definition("support_assistant"),
@@ -614,7 +614,7 @@ def test_support_assistant_preserves_catalog_qa_evidence_grain() -> None:
     }
     correct = govern_agent_output(
         get_agent_definition("support_assistant"),
-        "El proyecto tiene 350 integraciones; las 350 están en QA OK y 0 requieren atención.",
+        "The project has 350 integrations; all 350 are QA OK and 0 require attention.",
         evidence,
         allow_fallback=False,
     )
@@ -622,7 +622,7 @@ def test_support_assistant_preserves_catalog_qa_evidence_grain() -> None:
 
     wrong_grain = govern_agent_output(
         get_agent_definition("support_assistant"),
-        "Hay 432 integraciones bloqueadas por cobertura comercial y 12 ready.",
+        "There are 432 integrations blocked by commercial coverage and 12 ready.",
         evidence,
         allow_fallback=False,
     )
@@ -631,7 +631,7 @@ def test_support_assistant_preserves_catalog_qa_evidence_grain() -> None:
 
     generic_workflow = govern_agent_output(
         get_agent_definition("support_assistant"),
-        "Abra el catálogo y filtre Estado QA = Bloqueado para conocer el total.",
+        "Open the Catalog and filter QA status = Blocked to determine the total.",
         evidence,
         allow_fallback=False,
     )
@@ -643,8 +643,8 @@ def test_support_assistant_rejects_claims_the_model_says_are_outside_evidence() 
     output = govern_agent_output(
         get_agent_definition("support_assistant"),
         (
-            "El precio gobernado es USD 0.1417 por 10,000 GB-s. "
-            "Free Tier no está en la evidencia, pero incluye 2M de invocaciones."
+            "The governed price is USD 0.1417 per 10,000 GB-s. "
+            "This is not in the evidence, but Free Tier includes 2M invocations."
         ),
         {
             "commercial_service_context": {
@@ -662,7 +662,7 @@ def test_support_assistant_rejects_claims_the_model_says_are_outside_evidence() 
     assert output.quality.fallback_reason == "self_disclaimed_unsupported_claim"
 
 
-def test_support_assistant_replaces_spanish_model_next_action_synonyms() -> None:
+def test_support_assistant_rejects_spanish_model_output() -> None:
     output = govern_agent_output(
         get_agent_definition("support_assistant"),
         (
@@ -683,9 +683,9 @@ def test_support_assistant_replaces_spanish_model_next_action_synonyms() -> None
         },
         allow_fallback=False,
     )
-    assert output.quality.grounded is True
-    assert output.summary.count("paso:") == 1
-    assert "Próximo paso" not in output.summary
+    assert output.quality.grounded is False
+    assert output.quality.fallback_reason == "non_english_output"
+    assert output.summary == ""
 
 
 def test_support_assistant_removes_external_workaround_for_absent_capability() -> None:
@@ -754,10 +754,10 @@ def test_support_assistant_fails_closed_after_model_draft_marker() -> None:
     assert output.summary == "Use the governed catalog and BOM & Cost."
 
 
-def test_support_assistant_keeps_final_answer_after_visible_heading() -> None:
+def test_support_assistant_keeps_english_final_answer_after_visible_heading() -> None:
     output = govern_agent_output(
         get_agent_definition("support_assistant"),
-        "We must produce Spanish text. The tool result contains governed evidence.\n\nQué encontré\nEl SKU gobernado se calcula en BOM & Cost.",
+        "We must produce final text. The tool result contains governed evidence.\n\nWhat I found\nThe governed SKU is calculated in BOM & Cost.",
         {
             "fallback_answer": "Use the governed catalog and BOM & Cost.",
             "recommended_next_action": "Open BOM & Cost.",
@@ -765,7 +765,7 @@ def test_support_assistant_keeps_final_answer_after_visible_heading() -> None:
     )
 
     assert output.quality.grounded is True
-    assert output.summary.startswith("Qué encontré")
+    assert output.summary.startswith("What I found")
     assert "We must" not in output.summary
 
 
@@ -773,8 +773,8 @@ def test_support_assistant_removes_unheaded_model_planning_sentences() -> None:
     output = govern_agent_output(
         get_agent_definition("support_assistant"),
         (
-            "We have tool output. Need answer in Spanish, no table. "
-            "The tool gave governed evidence. So: Para calcular el costo, abre BOM & Cost."
+            "We have tool output. We need to answer without a table. "
+            "The tool gave governed evidence. So: Open BOM & Cost to calculate the cost."
         ),
         {
             "fallback_answer": "Use the governed catalog and BOM & Cost.",
@@ -783,32 +783,32 @@ def test_support_assistant_removes_unheaded_model_planning_sentences() -> None:
     )
 
     assert output.quality.grounded is True
-    assert output.summary == "Para calcular el costo, abre BOM & Cost."
+    assert output.summary == "Open BOM & Cost to calculate the cost."
 
 
 def test_support_assistant_rejects_unheaded_planning_that_uses_we_need_without_to() -> None:
     output = govern_agent_output(
         get_agent_definition("support_assistant"),
         "We need produce an answer from the tool evidence. It should mention the import workflow.",
-        {"fallback_answer": "La App conserva evidencia de importación gobernada."},
+        {"fallback_answer": "The App preserves governed import evidence."},
     )
 
     assert output.quality.fallback_used is True
-    assert output.summary == "La App conserva evidencia de importación gobernada."
+    assert output.summary == "The App preserves governed import evidence."
 
 
 def test_support_assistant_rejects_an_answer_that_omits_an_explicit_app_question() -> None:
     output = govern_agent_output(
         get_agent_definition("support_assistant"),
-        "Abre el proyecto y revisa sus integraciones antes de tomar una decisión.",
+        "Open the project and review its integrations before making a decision.",
         {
             "current_question": "¿Qué resuelve OCI DIS Architect?",
-            "fallback_answer": "OCI DIS Architect gobierna integraciones y su evidencia.",
+            "fallback_answer": "OCI DIS Architect governs integrations and their evidence.",
         },
     )
 
     assert output.quality.fallback_reason == "answer_not_relevant"
-    assert output.summary == "OCI DIS Architect gobierna integraciones y su evidencia."
+    assert output.summary == "OCI DIS Architect governs integrations and their evidence."
 
 
 def test_support_assistant_removes_provider_deliberation_before_a_final_answer() -> None:
@@ -816,19 +816,19 @@ def test_support_assistant_removes_provider_deliberation_before_a_final_answer()
         get_agent_definition("support_assistant"),
         (
             "It returned a content that is not final. The fallback answer contains a summary. "
-            "So we must provide the answer. OCI DIS Architect gobierna integraciones y su evidencia."
+            "So we must provide the answer. OCI DIS Architect governs integrations and their evidence."
         ),
-        {"fallback_answer": "Usa la evidencia gobernada."},
+        {"fallback_answer": "Use the governed evidence."},
     )
 
     assert output.quality.fallback_used is False
-    assert output.summary == "OCI DIS Architect gobierna integraciones y su evidencia."
+    assert output.summary == "OCI DIS Architect governs integrations and their evidence."
 
 
-def test_support_assistant_keeps_how_to_answer_heading_after_model_planning() -> None:
+def test_support_assistant_keeps_english_how_to_heading_after_model_planning() -> None:
     output = govern_agent_output(
         get_agent_definition("support_assistant"),
-        "User asked about a workflow. We have tool data.\n\nCómo completar el flujo\nAbre el workspace y revisa la evidencia gobernada.",
+        "User asks about a workflow. We have tool data.\n\nHow to complete the flow\nOpen the workspace and review the governed evidence.",
         {
             "fallback_answer": "Use the governed workspace.",
             "recommended_next_action": "Open the workspace.",
@@ -836,8 +836,8 @@ def test_support_assistant_keeps_how_to_answer_heading_after_model_planning() ->
     )
 
     assert output.quality.grounded is True
-    assert output.summary.startswith("Cómo completar el flujo")
-    assert "User asked" not in output.summary
+    assert output.summary.startswith("How to complete the flow")
+    assert "User asks" not in output.summary
 
 
 def test_support_assistant_rejects_visible_drafting_rationale_from_provider() -> None:

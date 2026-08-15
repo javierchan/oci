@@ -561,7 +561,7 @@ async def create_brief_export(project_id: str, db: AsyncSession) -> ExportJobRes
         f"- Data Integration GB/month: {dashboard_snapshot.kpi_strip.di_data_processed_gb_month:g}",
         f"- Functions GB-s/month: {dashboard_snapshot.kpi_strip.functions_execution_units_gb_s:g}",
         f"- QA OK: {dashboard_snapshot.charts.completeness.qa_ok}",
-        f"- QA Review: {dashboard_snapshot.charts.completeness.qa_revisar}",
+        f"- QA Review: {dashboard_snapshot.charts.completeness.qa_review}",
         f"- QA Pending: {dashboard_snapshot.charts.completeness.qa_pending}",
         "",
         "## Readiness and Drift",

@@ -484,7 +484,7 @@ async def test_external_capture_requires_review_before_promotion(
     assert integration["tbq"] == "Y"
     assert integration["payload_per_execution_kb"] == 48.5
     assert integration["selected_pattern"] == "#18"
-    assert integration["qa_status"] == "REVISAR"
+    assert integration["qa_status"] == "REVIEW"
 
 
 async def test_external_capture_upsert_search_and_project_delete(

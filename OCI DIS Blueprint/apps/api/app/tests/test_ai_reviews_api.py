@@ -76,7 +76,7 @@ async def _seed_review_fixture(test_engine: AsyncEngine) -> tuple[str, str]:
             payload_per_execution_kb=None,
             selected_pattern="#17",
             core_tools="OCI Streaming",
-            qa_status="REVISAR",
+            qa_status="REVIEW",
             qa_reasons=[
                 "PATTERN_CORE_TOOLS_NOT_CERTIFIED",
                 "PATTERN_OVERLAYS_NOT_CERTIFIED",

@@ -119,7 +119,7 @@ export function GraphTriagePanel({
 
       <footer className="border-t border-[var(--color-border)] p-4">
         <Link
-          href={`/projects/${projectId}/catalog?qa_status=REVISAR`}
+          href={`/projects/${projectId}/catalog?qa_status=REVIEW`}
           className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-[var(--color-border)] px-4 py-2.5 text-sm font-semibold hover:bg-[var(--color-hover)]"
         >
           <ExternalLink className="h-4 w-4" />

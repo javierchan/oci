@@ -36,6 +36,9 @@ class DictionaryOption(Base, UUIDMixin, TimestampMixin):
     """Governed dropdown values for catalog fields."""
 
     __tablename__ = "dictionary_options"
+    __table_args__ = (
+        UniqueConstraint("category", "code", name="uq_dictionary_option_category_code"),
+    )
 
     category: Mapped[str] = mapped_column(String(100), nullable=False)
     code: Mapped[Optional[str]] = mapped_column(String(50))

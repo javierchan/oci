@@ -65,7 +65,7 @@ async def seed_graph_project(test_engine: AsyncEngine) -> str:
                     payload_per_execution_kb=128.0,
                     payload_per_hour_kb=1280.0,
                     selected_pattern="#02",
-                    qa_status="REVISAR",
+                    qa_status="REVIEW",
                 ),
             ]
         )
@@ -95,7 +95,7 @@ async def test_graph_exposes_risk_metrics_modes_and_actionable_integrations(
 
     edge = payload["edges"][0]
     assert edge["dominant_qa_status"] == "OK"
-    assert edge["risk_qa_status"] == "REVISAR"
+    assert edge["risk_qa_status"] == "REVIEW"
     assert edge["risk_score"] == 12
     assert edge["interaction_mode"] == "MIXED"
     assert edge["total_executions_per_day"] == 360.0

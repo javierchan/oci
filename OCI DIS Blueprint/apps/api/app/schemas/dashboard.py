@@ -50,7 +50,7 @@ class CompletenessChart(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid")
 
     qa_ok: int = 0
-    qa_revisar: int = 0
+    qa_review: int = 0
     qa_pending: int = 0
     rationale_informed: int = 0
     core_tools_informed: int = 0

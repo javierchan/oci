@@ -118,7 +118,7 @@ function buildCoverageSignals(form: ManualIntegrationCreate, patterns: PatternDe
 export function QaPreview({ form, patterns }: QaPreviewProps): JSX.Element {
   const rules = buildRules(form, patterns);
   const coverageSignals = buildCoverageSignals(form, patterns);
-  const qaStatus = rules.every((rule) => rule.pass) ? "OK" : "REVISAR";
+  const qaStatus = rules.every((rule) => rule.pass) ? "OK" : "REVIEW";
 
   return (
     <section className="app-card p-5">
@@ -132,7 +132,7 @@ export function QaPreview({ form, patterns }: QaPreviewProps): JSX.Element {
             "inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.2em]",
             qaStatus === "OK"
               ? "border-[var(--color-qa-ok-border)] bg-[var(--color-qa-ok-bg)] text-[var(--color-qa-ok-text)]"
-              : "border-[var(--color-qa-revisar-border)] bg-[var(--color-qa-revisar-bg)] text-[var(--color-qa-revisar-text)]",
+              : "border-[var(--color-qa-review-border)] bg-[var(--color-qa-review-bg)] text-[var(--color-qa-review-text)]",
           ].join(" ")}
         >
           {displayQaStatus(qaStatus)}

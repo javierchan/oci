@@ -41,12 +41,12 @@ export function deriveProjectWorkflowGuide({
   dashboard,
 }: ProjectWorkflowInput): ProjectWorkflowGuide {
   const qaOk = dashboard?.charts.completeness.qa_ok ?? 0;
-  const qaReview = dashboard?.charts.completeness.qa_revisar ?? 0;
+  const qaReview = dashboard?.charts.completeness.qa_review ?? 0;
   const qaPending = dashboard?.charts.completeness.qa_pending ?? 0;
   const hasInventory = catalogCount > 0;
   const hasQaWork = qaReview + qaPending > 0;
   const hasSizing = Boolean(latestSnapshotId);
-  const qaHref = catalogHref(projectId, `?qa_status=${qaPending > 0 ? "PENDING" : "REVISAR"}`);
+  const qaHref = catalogHref(projectId, `?qa_status=${qaPending > 0 ? "PENDING" : "REVIEW"}`);
 
   const nextAction = !hasInventory
     ? {

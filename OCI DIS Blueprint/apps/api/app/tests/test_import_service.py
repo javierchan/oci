@@ -184,7 +184,7 @@ def test_build_catalog_integration_enforces_certified_pattern_requirements() -> 
         header_map=header_map,
     )
 
-    assert integration.qa_status == "REVISAR"
+    assert integration.qa_status == "REVIEW"
     assert integration.qa_reasons is not None
     assert "PATTERN_NOT_CERTIFIED" not in integration.qa_reasons
     assert "RETRY_POLICY_REQUIRED" in integration.qa_reasons

@@ -159,7 +159,7 @@ export function GraphMobileList({ projectId, graph, loading, error }: GraphMobil
           ) : null}
           {risks.length > visibleRisks.length ? (
             <Link
-              href={`/projects/${projectId}/catalog?qa_status=REVISAR`}
+              href={`/projects/${projectId}/catalog?qa_status=REVIEW`}
               className="block rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3 text-center text-sm font-semibold text-[var(--color-accent)]"
             >
               Open all {risks.length} risk paths in Catalog

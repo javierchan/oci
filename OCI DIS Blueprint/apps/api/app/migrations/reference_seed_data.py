@@ -8,7 +8,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ01",
-        "value": "Cada 5 minutos",
+        "value": "Every 5 minutes",
         "description": "Type: Scheduled. Use for: explicit high frequency. Status: Valid.",
         "executions_per_day": 288.0,
         "sort_order": 1,
@@ -17,7 +17,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ02",
-        "value": "Cada 15 minutos",
+        "value": "Every 15 minutes",
         "description": "Type: Scheduled. Use for: explicit high frequency. Status: Valid.",
         "executions_per_day": 96.0,
         "sort_order": 2,
@@ -26,7 +26,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ03",
-        "value": "Cada 20 minutos",
+        "value": "Every 20 minutes",
         "description": "Type: Scheduled. Use for: explicit high frequency. Status: Valid.",
         "executions_per_day": 72.0,
         "sort_order": 3,
@@ -35,7 +35,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ04",
-        "value": "Cada 30 minutos",
+        "value": "Every 30 minutes",
         "description": "Type: Scheduled. Use for: explicit high frequency. Status: Valid.",
         "executions_per_day": 48.0,
         "sort_order": 4,
@@ -44,7 +44,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ05",
-        "value": "Cada 1 hora",
+        "value": "Every hour",
         "description": "Type: Scheduled. Use for: standard frequency. Status: Valid.",
         "executions_per_day": 24.0,
         "sort_order": 5,
@@ -53,7 +53,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ06",
-        "value": "Cada 2 horas",
+        "value": "Every 2 hours",
         "description": "Type: Scheduled. Use for: standard frequency. Status: Valid.",
         "executions_per_day": 12.0,
         "sort_order": 6,
@@ -62,7 +62,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ07",
-        "value": "Cada 4 horas",
+        "value": "Every 4 hours",
         "description": "Type: Scheduled. Use for: standard frequency. Status: Valid.",
         "executions_per_day": 6.0,
         "sort_order": 7,
@@ -71,7 +71,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ08",
-        "value": "Cada 6 horas",
+        "value": "Every 6 hours",
         "description": "Type: Scheduled. Use for: standard frequency. Status: Valid.",
         "executions_per_day": 4.0,
         "sort_order": 8,
@@ -80,7 +80,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ09",
-        "value": "Cada 8 horas",
+        "value": "Every 8 hours",
         "description": "Type: Scheduled. Use for: standard frequency. Status: Valid.",
         "executions_per_day": 3.0,
         "sort_order": 9,
@@ -89,7 +89,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ10",
-        "value": "Cada 12 horas",
+        "value": "Every 12 hours",
         "description": "Type: Scheduled. Use for: standard frequency. Status: Valid.",
         "executions_per_day": 2.0,
         "sort_order": 10,
@@ -98,7 +98,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ11",
-        "value": "Una vez al día",
+        "value": "Once per day",
         "description": "Type: Scheduled. Use for: standard frequency. Status: Valid.",
         "executions_per_day": 1.0,
         "sort_order": 11,
@@ -107,7 +107,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ12",
-        "value": "Semanal",
+        "value": "Weekly",
         "description": "Type: Scheduled. Use for: low frequency. Status: Valid.",
         "executions_per_day": 0.142857,
         "sort_order": 12,
@@ -116,7 +116,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ13",
-        "value": "Quincenal",
+        "value": "Biweekly",
         "description": "Type: Scheduled. Use for: low frequency. Status: Valid.",
         "executions_per_day": 0.066667,
         "sort_order": 13,
@@ -125,7 +125,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ14",
-        "value": "Mensual",
+        "value": "Monthly",
         "description": "Type: Scheduled. Use for: low frequency. Status: Valid.",
         "executions_per_day": 0.033333,
         "sort_order": 14,
@@ -134,7 +134,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ15",
-        "value": "Tiempo Real",
+        "value": "Real Time",
         "description": "Type: Event / continuous. Use for: equivalent batch proxy; validate final design. Status: Valid with caution.",
         "executions_per_day": 24.0,
         "sort_order": 15,
@@ -143,7 +143,7 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {
         "category": "FREQUENCY",
         "code": "FQ16",
-        "value": "Bajo demanda",
+        "value": "On Demand",
         "description": "Type: Occasional. Use for: initial proxy; confirm later. Status: Valid with caution.",
         "executions_per_day": 1.0,
         "sort_order": 16,
@@ -158,11 +158,11 @@ DICTIONARY_OPTIONS: list[dict[str, Any]] = [
     {"category": "TRIGGER_TYPE", "code": "TRG07", "value": "Kafka", "sort_order": 7, "version": "1.0.0"},
     {"category": "TRIGGER_TYPE", "code": "TRG08", "value": "Webhook", "sort_order": 8, "version": "1.0.0"},
     {"category": "TRIGGER_TYPE", "code": "TRG09", "value": "SOAP", "sort_order": 9, "version": "1.0.0"},
-    {"category": "COMPLEXITY", "code": "CX01", "value": "Bajo", "sort_order": 1, "version": "1.0.0"},
-    {"category": "COMPLEXITY", "code": "CX02", "value": "Medio", "sort_order": 2, "version": "1.0.0"},
-    {"category": "COMPLEXITY", "code": "CX03", "value": "Alto", "sort_order": 3, "version": "1.0.0"},
+    {"category": "COMPLEXITY", "code": "CX01", "value": "Low", "sort_order": 1, "version": "1.0.0"},
+    {"category": "COMPLEXITY", "code": "CX02", "value": "Medium", "sort_order": 2, "version": "1.0.0"},
+    {"category": "COMPLEXITY", "code": "CX03", "value": "High", "sort_order": 3, "version": "1.0.0"},
     {"category": "QA_STATUS", "code": "QA01", "value": "OK", "sort_order": 1, "version": "1.0.0"},
-    {"category": "QA_STATUS", "code": "QA02", "value": "REVISAR", "sort_order": 2, "version": "1.0.0"},
+    {"category": "QA_STATUS", "code": "QA02", "value": "REVIEW", "sort_order": 2, "version": "1.0.0"},
     {"category": "QA_STATUS", "code": "QA03", "value": "PENDING", "sort_order": 3, "version": "1.0.0"},
     {
         "category": "TOOLS",

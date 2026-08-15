@@ -73,6 +73,18 @@ SUPPORT_NEXT_ACTION_LINE_PATTERN = re.compile(
     r"siguiente\s+(?:paso|acci[oó]n)|pr[oó]xim[oa]\s+(?:paso|acci[oó]n)"
     r"(?:\s+recomendad[oa])?)\s*:\*{0,2}.*$"
 )
+SPANISH_PLATFORM_OUTPUT_PATTERN = re.compile(
+    r"\b(?:siguiente\s+(?:paso|acci[oó]n)|abrir|revisar|revisa|todav[ií]a|"
+    r"seleccion[oó]|mueve\s+datos|capturad[oa]|ningun[ao]?|l[ií]neas?|"
+    r"evidencia\s+(?:gobernada|comercial)|proyecto\s+comercial)\b",
+    re.IGNORECASE,
+)
+SPANISH_STOPWORD_PATTERN = re.compile(
+    r"\b(?:el|la|los|las|un|una|unos|unas|de|del|al|y|que|para|por|con|sin|"
+    r"sus|antes|despu[eé]s|desde|hasta|debe|puede|permite|conserva|gobierna|"
+    r"abre|revisa|proyecto|integraciones|evidencia)\b",
+    re.IGNORECASE,
+)
 APPLIED_ACTION_PATTERN = re.compile(
     r"\b(?:i|we|the agent|the app)\s+(?:have\s+)?(?:applied|changed|updated|deployed|"
     r"approved|published|saved|deleted|created)\b",
@@ -148,8 +160,7 @@ def _canonical_support_next_action(value: str, evidence: dict[str, object]) -> s
         return value
     without_provider_action = SUPPORT_NEXT_ACTION_LINE_PATTERN.sub("", value)
     without_provider_action = re.sub(r"\n{3,}", "\n\n", without_provider_action).strip()
-    prefix = "Siguiente paso" if evidence.get("response_language") == "es" else "Next action"
-    action = f"**{prefix}:** [{label}]({href})"
+    action = f"**Next action:** [{label}]({href})"
     return f"{without_provider_action}\n\n{action}" if without_provider_action else action
 
 
@@ -506,6 +517,8 @@ def _grounding_failure(
     if len(normalized_summary.split()) > _word_limit(definition):
         return "word_limit_exceeded"
     if definition.type == "support_assistant":
+        if _contains_spanish_platform_language(normalized_summary):
+            return "non_english_output"
         grain_failure = _support_evidence_grain_failure(
             normalized_summary,
             evidence,
@@ -763,6 +776,8 @@ def _fallback_summary(definition: AgentDefinition, brief: AgentOutputBrief) -> s
     # A conversational fallback is already a user-facing answer.  Do not wrap
     # it in internal-looking headings or an unrelated generic next action.
     if definition.type == "support_assistant":
+        if _contains_spanish_platform_language(brief.finding):
+            return "The assistant could not produce an English, grounded response. Review the governed context and try again."
         return brief.finding
     action = brief.next_actions[0] if brief.next_actions else "Review the governed evidence."
     return f"{brief.headline}\n\n{brief.finding}\n\nNext action: {action}"
@@ -777,6 +792,14 @@ def _evidence_completeness(brief: AgentOutputBrief, evidence: dict[str, object])
     score += 15 if brief.validation else 0
     score += 15 if brief.evidence_ids else 0
     return min(score, 100)
+
+
+def _contains_spanish_platform_language(value: str) -> bool:
+    """Detect platform-authored Spanish prose without rejecting isolated source names."""
+
+    if SPANISH_PLATFORM_OUTPUT_PATTERN.search(value):
+        return True
+    return len(SPANISH_STOPWORD_PATTERN.findall(value)) >= 3
 
 
 def govern_agent_output(

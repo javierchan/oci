@@ -274,7 +274,7 @@ inference, or grounding ends the answer visibly as failed. Specialized agents
 may preserve their already-computed deterministic evidence brief, but they do
 not label it as successful model synthesis.
 
-The current provider artifact contains 282 of 282 Cohere Embed v4 vectors at
+The current provider artifact contains 265 of 265 Cohere Embed v4 vectors at
 512 dimensions. Local 384-dimension vectors exist for deterministic build and
 unconfigured test environments; they are not a production answer fallback.
 
@@ -357,16 +357,16 @@ traffic routing must use `/readiness` only after that migration step succeeds.
 | Evidence | Observed result |
 | --- | --- |
 | Docker runtime | Eight expected Compose services running; API, PostgreSQL, Redis, and MinIO healthy |
-| Migration state | Current and head at `20260814_0061` |
+| Migration state | Current and head at `20260815_0062` |
 | Authentication | Local login, forged-header rejection, cross-user `404`, and scoped read-only token lifecycle pass |
 | Browser authentication QA | Login, Account, project visibility, token create/revoke, and zero console warnings/errors pass |
-| API tests | 375 passed |
-| Calculation engine | 99 passed |
+| API tests | 379 passed |
+| Calculation engine | 105 passed |
 | Pricing engine | 35 passed |
 | Frontend tests | 142 passed across 24 files |
 | Static checks | Ruff, scoped mypy, TypeScript, and ESLint passed |
 | Production build | Next.js production build passed |
-| App Knowledge | Deterministic/provider drift check passed; source hash prefix `297eb2520f00`; `308/308` OCI provider vectors at 512 dimensions |
+| App Knowledge | Deterministic/provider drift check passed; source hash prefix `2a338bef7f2d`; `265/265` OCI provider vectors at 512 dimensions |
 | Service-limit assurance | Real Oracle smoke completed against API Gateway, Queue, and Streaming: 12 of 36 core numeric limits confirmed; global library coverage 13.48%, honestly `incomplete` |
 
 Focused non-destructive browser authentication QA was rerun against the retained

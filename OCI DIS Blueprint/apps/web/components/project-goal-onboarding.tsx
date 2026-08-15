@@ -22,7 +22,7 @@ export function ProjectGoalOnboarding({ projectId }: { projectId: string }): JSX
   const [selected, setSelected] = useState<GoalId | null>(null);
   const goals: Goal[] = [
     { id: "import", label: "Import inventory", detail: "Bring in the governed source workbook.", href: `/projects/${projectId}/import`, icon: FileUp },
-    { id: "qa", label: "Resolve QA", detail: "Clear missing evidence and architect decisions.", href: `/projects/${projectId}/catalog?qa_status=REVISAR`, icon: ClipboardCheck },
+    { id: "qa", label: "Resolve QA", detail: "Clear missing evidence and architect decisions.", href: `/projects/${projectId}/catalog?qa_status=REVIEW`, icon: ClipboardCheck },
     { id: "sizing", label: "Estimate capacity", detail: "Review technical sizing and readiness.", href: `/projects/${projectId}#attention-center`, icon: BarChart3 },
     { id: "cost", label: "Review cost", detail: "Compare governed deployment scenarios and BOM.", href: `/projects/${projectId}/bom`, icon: ReceiptText },
   ];

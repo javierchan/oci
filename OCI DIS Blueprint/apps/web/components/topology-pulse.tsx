@@ -20,7 +20,7 @@ type TopologyPulseProps = {
 
 const QA_COLORS = {
   ok: "var(--color-qa-ok-text)",
-  review: "var(--color-qa-revisar-text)",
+  review: "var(--color-qa-review-text)",
   pending: "var(--color-toast-error-text)",
 };
 

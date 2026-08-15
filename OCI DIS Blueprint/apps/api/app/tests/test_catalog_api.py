@@ -167,7 +167,7 @@ async def test_refresh_project_qa_removes_stale_derived_reasons(
             core_tools="OIC Gen3",
             payload_per_execution_kb=10.0,
             target_latency_sla="2 seconds",
-            qa_status="REVISAR",
+            qa_status="REVIEW",
             qa_reasons=["PATTERN_REFERENCE_ONLY"],
         )
         session.add(row)
@@ -183,7 +183,7 @@ async def test_refresh_project_qa_removes_stale_derived_reasons(
         "evaluated": 1,
         "changed": 1,
         "qa_ok": 1,
-        "qa_revisar": 0,
+        "qa_review": 0,
         "qa_pending": 0,
     }
 

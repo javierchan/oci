@@ -31,16 +31,17 @@ class ImportStatus(str, enum.Enum):
 
 
 class IntegrationStatus(str, enum.Enum):
-    YA_EXISTE = "Ya existe"
-    DEFINITIVA = "Definitiva (End-State)"
-    EN_REVISION = "En Revisión"
+    ALREADY_EXISTS = "Already Exists"
+    TARGET_STATE = "Target State"
+    IN_REVIEW = "In Review"
+    IN_PROGRESS = "In Progress"
     TBD = "TBD"
-    DUPLICADO_1 = "Duplicado 1"
+    DUPLICATE_1 = "Duplicate 1"
 
 
 class QAStatus(str, enum.Enum):
     OK = "OK"
-    REVISAR = "REVISAR"
+    REVIEW = "REVIEW"
     PENDING = "PENDING"
 
 

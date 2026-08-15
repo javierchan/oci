@@ -344,8 +344,6 @@ def _retrieval_units(curated: dict[str, object]) -> list[dict[str, object]]:
         for kind, intent, value in (
             ("section_purpose", "concept_explanation", raw_section.get("purpose")),
             ("when_to_use", "concept_explanation", raw_section.get("when_to_use")),
-            ("section_purpose_es", "concept_explanation", raw_section.get("purpose_es")),
-            ("when_to_use_es", "concept_explanation", raw_section.get("when_to_use_es")),
         ):
             if value:
                 units.append(
@@ -367,17 +365,6 @@ def _retrieval_units(curated: dict[str, object]) -> list[dict[str, object]]:
                     "intent": "workflow_guidance",
                     "mode": "knowledge",
                     "text": f"How to use {section_name}. Step {index}: {step}",
-                }
-            )
-        for index, step in enumerate(_as_list(raw_section.get("steps_es")), start=1):
-            units.append(
-                {
-                    "id": f"{section_id}:step_es:{index}",
-                    "section_id": section_id,
-                    "kind": "step_es",
-                    "intent": "workflow_guidance",
-                    "mode": "knowledge",
-                    "text": f"Cómo usar {section_name}. Paso {index}: {step}",
                 }
             )
         for index, action in enumerate(_as_list(raw_section.get("supported_actions")), start=1):
@@ -409,6 +396,7 @@ def _retrieval_units(curated: dict[str, object]) -> list[dict[str, object]]:
     for index, raw in enumerate(_as_list(curated.get("semantic_examples")), start=1):
         if not isinstance(raw, dict) or not raw.get("text"):
             continue
+        is_input_alias = str(raw.get("id") or "").endswith("-es")
         units.append(
             {
                 "id": str(raw.get("id") or f"example:{index}"),
@@ -417,7 +405,9 @@ def _retrieval_units(curated: dict[str, object]) -> list[dict[str, object]]:
                 "intent": str(raw.get("intent") or "concept_explanation"),
                 "mode": str(raw.get("mode") or "knowledge"),
                 "capability_status": raw.get("capability_status"),
-                "answer": raw.get("answer"),
+                # Spanish examples remain retrieval-only input aliases. Product
+                # answers are assembled from the English governed section.
+                "answer": None if is_input_alias else raw.get("answer"),
                 "text": str(raw["text"]),
             }
         )

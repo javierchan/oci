@@ -310,7 +310,7 @@ export default async function AdminServiceDetailPage({
             {antiPatternBullets.length > 0 ? (
               <div className="mt-5 grid gap-3 md:grid-cols-2">
                 {antiPatternBullets.slice(0, 6).map((item) => (
-                  <div key={item} className="rounded-2xl border border-[var(--color-qa-pendiente-border)] bg-[var(--color-qa-pendiente-bg)] p-4 text-sm leading-6 text-[var(--color-qa-pendiente-text)]">
+                  <div key={item} className="rounded-2xl border border-[var(--color-qa-review-border)] bg-[var(--color-qa-review-bg)] p-4 text-sm leading-6 text-[var(--color-qa-review-text)]">
                     {item}
                   </div>
                 ))}

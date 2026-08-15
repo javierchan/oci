@@ -20,7 +20,7 @@ function dashboard(overrides: Partial<DashboardSnapshot["charts"]["completeness"
     },
     charts: {
       coverage: { total_integrations: 0, formal_id: { complete: 0, total: 0, ratio: 0 }, pattern: { complete: 0, total: 0, ratio: 0 }, payload: { complete: 0, total: 0, ratio: 0 }, trigger: { complete: 0, total: 0, ratio: 0 }, source_destination: { complete: 0, total: 0, ratio: 0 }, fan_out: { complete: 0, total: 0, ratio: 0 } },
-      completeness: { qa_ok: 0, qa_revisar: 0, qa_pending: 0, rationale_informed: 0, core_tools_informed: 0, comments_informed: 0, retry_policy_informed: 0, ...overrides },
+      completeness: { qa_ok: 0, qa_review: 0, qa_pending: 0, rationale_informed: 0, core_tools_informed: 0, comments_informed: 0, retry_policy_informed: 0, ...overrides },
       pattern_mix: [],
       payload_distribution: [],
       forecast_confidence: { level: "high", title: "High", message: "", payload_coverage_ratio: 1 },
@@ -42,10 +42,10 @@ describe("deriveProjectWorkflowGuide", () => {
   });
 
   it("routes QA review before calculation", () => {
-    const guide = deriveProjectWorkflowGuide({ projectId, catalogCount: 4, latestSnapshotId: null, dashboard: dashboard({ qa_revisar: 2 }) });
+    const guide = deriveProjectWorkflowGuide({ projectId, catalogCount: 4, latestSnapshotId: null, dashboard: dashboard({ qa_review: 2 }) });
 
     expect(guide.nextAction.label).toBe("Resolve the QA queue");
-    expect(guide.nextAction.href).toContain("qa_status=REVISAR");
+    expect(guide.nextAction.href).toContain("qa_status=REVIEW");
   });
 
   it("routes a governed, calculated project to topology investigation", () => {

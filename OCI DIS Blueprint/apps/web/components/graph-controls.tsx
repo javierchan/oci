@@ -317,8 +317,8 @@ export function GraphControls({
           <button type="button" onClick={() => onFilterChange("qa_status", "OK")} aria-pressed={qaFilter === "OK"} className={segmentClasses(qaFilter === "OK")}>
             <span className="h-2 w-2 rounded-full bg-[#15803d]" /> OK {compactCount(qaTotals.ok)}
           </button>
-          <button type="button" onClick={() => onFilterChange("qa_status", "REVISAR")} aria-pressed={qaFilter === "REVISAR"} className={segmentClasses(qaFilter === "REVISAR")}>
-            <span className="h-2 w-2 rounded-full bg-[#b45309]" /> {displayQaStatus("REVISAR")} {compactCount(qaTotals.review)}
+          <button type="button" onClick={() => onFilterChange("qa_status", "REVIEW")} aria-pressed={qaFilter === "REVIEW"} className={segmentClasses(qaFilter === "REVIEW")}>
+            <span className="h-2 w-2 rounded-full bg-[#b45309]" /> {displayQaStatus("REVIEW")} {compactCount(qaTotals.review)}
           </button>
           <button type="button" onClick={() => onFilterChange("qa_status", "PENDING")} aria-pressed={qaFilter === "PENDING"} className={segmentClasses(qaFilter === "PENDING")}>
             <span className="h-2 w-2 rounded-full bg-[#b91c1c]" /> {displayQaStatus("PENDING")} {compactCount(qaTotals.pending)}

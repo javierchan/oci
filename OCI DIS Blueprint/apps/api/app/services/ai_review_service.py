@@ -1012,7 +1012,7 @@ def _topology_insights(
     top_system_review_rows = [
         row
         for row in top_system_rows
-        if (row.qa_status or "").upper() == "REVISAR" or row.id in warning_map
+        if (row.qa_status or "").upper() == "REVIEW" or row.id in warning_map
     ]
     insights.append(
         AiReviewTopologyInsight(
@@ -1034,14 +1034,14 @@ def _topology_insights(
     edge_candidates = [
         (edge, edge_scope)
         for edge, edge_scope in edge_rows.items()
-        if any((row.qa_status or "").upper() == "REVISAR" or row.id in warning_map for row in edge_scope)
+        if any((row.qa_status or "").upper() == "REVIEW" or row.id in warning_map for row in edge_scope)
     ]
     if edge_candidates:
         (source, destination), risky_edge_rows = max(
             edge_candidates,
             key=lambda item: (
                 sum(1 for row in item[1] if row.id in warning_map),
-                sum(1 for row in item[1] if (row.qa_status or "").upper() == "REVISAR"),
+                sum(1 for row in item[1] if (row.qa_status or "").upper() == "REVIEW"),
                 len(item[1]),
             ),
         )
@@ -1760,7 +1760,7 @@ async def build_review_result(
             "PATTERN_OVERLAYS_NOT_CERTIFIED",
         }.intersection(row.qa_reasons or [])
     ]
-    review_rows = [row for row in rows if (row.qa_status or "").upper() == "REVISAR"]
+    review_rows = [row for row in rows if (row.qa_status or "").upper() == "REVIEW"]
     pending_rows = [row for row in rows if (row.qa_status or "").upper() == "PENDING"]
     warning_rows = [row for row in rows if row.id in warning_map]
     qa_ok_with_warnings = [row for row in rows if (row.qa_status or "").upper() == "OK" and row.id in warning_map]
@@ -1778,7 +1778,7 @@ async def build_review_result(
     ev_qa = _evidence(
         evidence,
         label="QA distribution",
-        detail=f"OK={qa_counts.get('OK', 0)}, REVISAR={qa_counts.get('REVISAR', 0)}, PENDING={qa_counts.get('PENDING', 0)}.",
+        detail=f"OK={qa_counts.get('OK', 0)}, REVIEW={qa_counts.get('REVIEW', 0)}, PENDING={qa_counts.get('PENDING', 0)}.",
         source="catalog_integrations.qa_status",
         entity_type="project",
         entity_id=project_id,
@@ -1991,11 +1991,11 @@ async def build_review_result(
                 f"{len(review_rows)} integration(s) still require architect review before this project is clean.",
                 ids,
                 [*_evidence_lines(evidence, ids), *[_display_name(row) for row in review_rows[:3]]],
-                f"qa_revisar={len(review_rows)}",
+                f"qa_review={len(review_rows)}",
                 "QA review rows should be resolved or explicitly accepted by the architect.",
                 "Filter QA review rows and close the architect decisions before presenting as complete.",
                 "Filter QA review",
-                _catalog_href(project_id, "qa_status=REVISAR"),
+                _catalog_href(project_id, "qa_status=REVIEW"),
                 _first_ids(review_rows),
             )
         )
@@ -2321,7 +2321,7 @@ async def build_review_result(
         f"graph_context={_graph_context_detail(graph_context)}",
         f"catalog_rows={total}",
         f"qa_ok={qa_counts.get('OK', 0)}",
-        f"qa_revisar={qa_counts.get('REVISAR', 0)}",
+        f"qa_review={qa_counts.get('REVIEW', 0)}",
         f"qa_pending={qa_counts.get('PENDING', 0)}",
         f"latest_volumetry_snapshot={latest_snapshot.id if latest_snapshot else 'none'}",
         f"latest_dashboard_snapshot={latest_dashboard.id if latest_dashboard else 'none'}",
