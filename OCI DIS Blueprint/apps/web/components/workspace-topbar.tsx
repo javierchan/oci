@@ -346,6 +346,9 @@ export function WorkspaceTopBar(): JSX.Element {
               type="button"
               onClick={() => setPaletteOpen(true)}
               className="hidden min-w-[18rem] items-center gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-2)] px-3 py-2 text-left text-sm text-[var(--color-text-muted)] transition hover:border-[var(--color-line-strong)] hover:bg-[var(--color-hover)] xl:flex"
+              aria-label="Open command palette"
+              aria-haspopup="dialog"
+              aria-keyshortcuts="Meta+K Control+K"
             >
               <Search className="h-4 w-4" />
               <span className="flex-1">Search or jump...</span>
@@ -356,6 +359,8 @@ export function WorkspaceTopBar(): JSX.Element {
               onClick={() => setPaletteOpen(true)}
               className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-[var(--color-border)] text-[var(--color-text-secondary)] transition hover:bg-[var(--color-hover)] hover:text-[var(--color-text-primary)] xl:hidden"
               aria-label="Open command palette"
+              aria-haspopup="dialog"
+              aria-keyshortcuts="Meta+K Control+K"
             >
               <Command className="h-4 w-4" />
             </button>
